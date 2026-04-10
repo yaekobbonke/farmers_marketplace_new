@@ -17,7 +17,7 @@ export class ProductController {
 
       // 2. Identify the Farmer
       // Fix: Use 'userId' because that is how it was signed in the JWT payload
-      const farmerId = req.user?.userId || req.user?.id;
+      const farmerId = req.user?.id;
 
       if (!farmerId) {
         return res.status(401).json({
