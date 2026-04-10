@@ -5,7 +5,7 @@ import { ZodError } from "zod";
 
 export class ProductController {
   /**
-   * POST /api/v1/products
+   * POST /api/product
    * Creates a product and assigns it to the authenticated farmer.
    */
   static async create(req: Request, res: Response) {
@@ -16,7 +16,6 @@ export class ProductController {
       const data = createProductSchema.parse(req.body);
 
       // 2. Identify the Farmer
-      // Fix: Use 'userId' because that is how it was signed in the JWT payload
       const farmerId = req.user?.id;
 
       if (!farmerId) {
@@ -36,7 +35,6 @@ export class ProductController {
       });
 
     } catch (error: any) {
-      // 4. Handle Zod Validation Errors (like missing fields)
       if (error instanceof ZodError) {
         return res.status(400).json({
           success: false,
@@ -51,81 +49,91 @@ export class ProductController {
       console.error("🔥 Create Product Error:", error);
       return res.status(500).json({
         success: false,
-        message: "Internal Server Error"
+        message: "Internal Server Error",
+        detail: error.message // Helps identify DB issues in production
       });
     }
   }
 
   /**
-   * GET /api/v1/products
+   * GET /api/product
+   * Fetches all products. Added logging to debug 500 errors.
    */
   static async getAll(req: Request, res: Response) {
     try {
+      console.log("📦 Request received: Fetching all products...");
+      
       const products = await ProductService.getAll(req.query);
-      res.json({
+      
+      return res.json({
         success: true,
         count: products.length,
         data: products
       });
-    } catch (error) {
-      res.status(500).json({ success: false, message: "Failed to fetch products" });
-    }
-  }
-
-  /**
-   * GET /api/products/:id
-   */
-  static async getById(req: Request, res: Response) {
-  try {
-    const { id } = req.params;
-    const numericId = Number(id);
-
-    // Check if conversion failed
-    if (isNaN(numericId)) {
-      return res.status(400).json({ 
+    } catch (error: any) {
+      // This will now print the EXACT error (e.g., Prisma connection) in Render Logs
+      console.error("❌ GET_ALL_PRODUCTS_ERROR:", error);
+      
+      return res.status(500).json({ 
         success: false, 
-        message: `Invalid ID format: ${id} is not a number` 
+        message: "Failed to fetch products",
+        detail: error.message // This reveals the hidden error in the browser/Postman
       });
     }
-
-    const product = await ProductService.getById(numericId);
-
-    if (!product) {
-      return res.status(404).json({ success: false, message: "Product not found" });
-    }
-
-    res.json({ success: true, data: product });
-  } catch (error) {
-    // CRITICAL: Log the error in your terminal to see what actually happened!
-    console.error("Backend Error in getById:", error);
-    
-    res.status(500).json({ 
-      success: false, 
-      message: "Internal Server Error",
-      error: process.env.NODE_ENV === 'development' ? error : undefined 
-    });
   }
-}
 
   /**
-   * PATCH /api/v1/products/:id
+   * GET /api/product/:id
+   */
+  static async getById(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const numericId = Number(id);
+
+      if (isNaN(numericId)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Invalid ID format: ${id} is not a number` 
+        });
+      }
+
+      const product = await ProductService.getById(numericId);
+
+      if (!product) {
+        return res.status(404).json({ success: false, message: "Product not found" });
+      }
+
+      return res.json({ success: true, data: product });
+    } catch (error: any) {
+      console.error("🔥 getById Error:", error);
+      return res.status(500).json({ 
+        success: false, 
+        message: "Internal Server Error",
+        detail: error.message 
+      });
+    }
+  }
+
+  /**
+   * PATCH /api/product/:id
    */
   static async update(req: Request, res: Response) {
     try {
       const id = Number(req.params.id);
-      const farmerId = req.user?.userId || req.user?.id;
+      const farmerId = req.user?.id;
       
       const data = updateProductSchema.parse(req.body);
 
       const product = await ProductService.update(id, Number(farmerId), data);
-      res.json({
+      return res.json({
         success: true,
         message: "Product updated successfully",
         data: product
       });
     } catch (error: any) {
+      console.error("🔥 Update Error:", error);
       const status = error instanceof ZodError ? 400 : 403;
-      res.status(status).json({
+      return res.status(status).json({
         success: false,
         message: error.message || "Update failed"
       });
@@ -133,17 +141,18 @@ export class ProductController {
   }
 
   /**
-   
+   * DELETE /api/product/:id
    */
   static async remove(req: Request, res: Response) {
     try {
       const id = Number(req.params.id);
-      const farmerId = req.user?.userId || req.user?.id;
+      const farmerId = req.user?.id;
 
       await ProductService.remove(id, Number(farmerId));
-      res.status(204).send();
+      return res.status(204).send();
     } catch (error: any) {
-      res.status(403).json({
+      console.error("🔥 Delete Error:", error);
+      return res.status(403).json({
         success: false,
         message: error.message || "Delete failed"
       });
