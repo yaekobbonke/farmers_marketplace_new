@@ -1,0 +1,114 @@
+version: "3.9"
+
+services:
+  # -----------------------------
+  # PostgreSQL Database
+  # -----------------------------
+  postgres:
+    image: postgres:15
+    container_name: marketplace-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: marketplace
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  # -----------------------------
+  # Redis for Caching & Queues
+  # -----------------------------
+  redis:
+    image: redis:7
+    container_name: marketplace-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
+  # -----------------------------
+  # Express API
+  # -----------------------------
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: marketplace-api
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+      - redis
+      - ai-assistant
+    networks:
+      - app-network
+    environment:
+      DATABASE_URL: postgres://postgres:password@postgres:5432/marketplace
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+  # -----------------------------
+  # AI Semantic Search Service
+  # -----------------------------
+  ai-search:
+    build:
+      context: ./ai-services/semantic-search
+      dockerfile: Dockerfile
+    container_name: ai-search
+    ports:
+      - "7000:7000"
+    networks:
+      - app-network
+
+  # -----------------------------
+  # AI Price Prediction Service
+  # -----------------------------
+  ai-price:
+    build:
+      context: ./ai-services/price-prediction
+      dockerfile: Dockerfile
+    container_name: ai-price
+    ports:
+      - "8000:8000"
+    networks:
+      - app-network
+
+  # -----------------------------
+  # AI Recommendation Engine
+  # -----------------------------
+  ai-recommend:
+    build:
+      context: ./ai-services/recommendation-engine
+      dockerfile: Dockerfile
+    container_name: ai-recommend
+    ports:
+      - "9000:9000"
+    networks:
+      - app-network
+
+  # -----------------------------
+  # AI Assistant Chatbot Service
+  # -----------------------------
+  ai-assistant:
+    build:
+      context: ./ai-services/assistant
+      dockerfile: Dockerfile
+    container_name: ai-assistant
+    ports:
+      - "6000:6000"
+    depends_on:
+      - ai-search
+      - ai-price
+      - ai-recommend
+    networks:
+      - app-network
+
+volumes:
+  pgdata:
+
+networks:
+  app-network:
+    driver: bridge

@@ -1,0 +1,25 @@
+import { Router } from "express";
+import productRoutes from "./modules/products/index"; 
+import authRoutes from "./modules/auth/index";
+import priceRoutes from "./modules/prices/index";
+import searchRoutes from "./modules/search/index";
+import assistantRoutes from "./modules/assistant/index";
+
+const router = Router();
+
+router.get("/", (req, res) => {
+    return res.json({message: "API is running"});
+});
+
+router.use("/auth", authRoutes);
+router.use("/product", productRoutes);
+router.use("/prices", priceRoutes);
+router.use("/search", searchRoutes);
+router.use("/assistant", assistantRoutes);
+
+
+
+
+export default router;
+
+
