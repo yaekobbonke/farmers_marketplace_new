@@ -22,7 +22,7 @@ model User {
   orders     Order[]
   products   Product[]
 
-  @@index([address])
+  @@index([location])
   @@index([email])
   @@index([phone])
 }
