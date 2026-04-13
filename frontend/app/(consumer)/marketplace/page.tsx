@@ -1,14 +1,9 @@
 "use client";
 
-import  { useState, useEffect, useCallback, useMemo } from "react";
-import { ProductCard } from "@/components/ProductCard";
-import { 
-  Search, 
-  RefreshCw, 
-  TrendingUp,
-  Target,
-  BarChart2
-} from "lucide-react";
+<<<<<<< HEAD
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { ProductCard, Product } from "@/components/ProductCard";
+import { Search, RefreshCw, TrendingUp, Target, BarChart2 } from "lucide-react";
 
 export default function MarketplacePage() {
   const [products, setProducts] = useState<unknown[]>([]);
@@ -18,7 +13,29 @@ export default function MarketplacePage() {
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
-      //const response = await fetch("http://localhost:5000/api/product");
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://farmers-marketplace-twy3.onrender.com";
+      const response = await fetch(`${API_BASE}/api/product`);
+      const result = await response.json();
+      
+      const rawData = result.data || result.products || (Array.isArray(result) ? result : []);
+      
+      // 3. CRITICAL: Transform the data to match the interface
+      const validatedData = rawData.map((item: any): Product => ({
+        ...item,
+        _id: String(item.id),
+        // Force price to be a number to satisfy the interface
+        price: typeof item.price === "string" ? parseFloat(item.price) : Number(item.price || 0),
+        // Ensure 'type' exists as the interface requires it
+        type: item.type || "General", 
+      }));
+      
+      setProducts(validatedData);
+    } catch (err) {
+      console.error("Fetch error", err);
+    } finally {
+      setTimeout(() => setLoading(false), 800);
+
+      // const response = await fetch("http://localhost:5000/api/product");
       const API_BASE = process.env.NEXT_PUBLIC_API_URL;
       const response = await fetch(`${API_BASE}/api/product`)
       
@@ -38,6 +55,22 @@ export default function MarketplacePage() {
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
+  // ... (rest of your logic for cropIntelligence and filtering)
+
+  return (
+    <div className="min-h-screen bg-slate-50/50 p-8">
+       {/* ... (your existing JSX) ... */}
+       {loading ? (
+          <div className="animate-pulse">Loading...</div>
+       ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+            {products.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase())).map((product) => (
+              // 4. Now 'product' matches exactly what ProductCard expects!
+              <ProductCard key={product._id} product={product} />
+            ))}
+          </div>
+       )}
+=======
   /**
    * CROP INTELLIGENCE LOGIC
    * 1. Normalizes "maize" vs "Maize" using .toLowerCase()

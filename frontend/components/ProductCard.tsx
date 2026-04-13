@@ -12,11 +12,20 @@ interface Prediction {
   predictedPrice: number;
 }
 
+<<<<<<< HEAD
+// Inside your ProductCard file
+export interface Product {  // <--- Added 'export'
+  _id: string;
+  name: string;
+  type: string; 
+  price: number; // The component expects a number
+=======
 interface Product {
   _id: string;
   name: string;
   type: string; 
   price: number;
+>>>>>>> 21815d8f14fb771ea61b4529855f6e39448e5c59
   location?: string;
   unit?: string; 
   farmer_name?: string; 
@@ -33,8 +42,8 @@ export const ProductCard = ({ product }: ProductCardProps) => {
   const [sessionUser, setSessionUser] = useState({ name: "", phone: "" });
 
   useEffect(() => {
-    const name = localStorage.getItem("userName") || "Verified Farmer";
-    const phone = localStorage.getItem("userPhone") || "+251 --- --- ---";
+    const name = localStorage.getItem("first_name") || "Verified Farmer";
+    const phone = localStorage.getItem("phone") || "+251 --- --- ---";
     setSessionUser({ name, phone });
   }, []);
 

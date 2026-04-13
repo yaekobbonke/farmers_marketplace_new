@@ -1,7 +1,31 @@
 "use client";
+<<<<<<< HEAD
+
+import React, { useEffect, useState } from 'react';
+import { 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  ResponsiveContainer 
+} from 'recharts';
+import { TrendingUp, AlertCircle } from 'lucide-react';
+
+// Define interface for trend points to satisfy TypeScript build
+interface TrendPoint {
+  day: string;
+  farmer: number;
+  market: number;
+  predicted: number;
+}
+=======
 import React, { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { TrendingUp, AlertCircle, MapPin } from 'lucide-react';
+>>>>>>> 21815d8f14fb771ea61b4529855f6e39448e5c59
 
 const PriceDashboard = ({ productId }: { productId: number }) => {
   const [data, setData] = useState<any>(null);
@@ -25,12 +49,25 @@ const PriceDashboard = ({ productId }: { productId: number }) => {
   if (loading) return <div className="p-10 text-center">Loading Market Insights...</div>;
 
   // Mocking a trend array for the chart based on the AI result
+<<<<<<< HEAD
+  const trendData: TrendPoint[] = [
+    { day: 'Mon', farmer: 22, market: 24, predicted: 23 },
+    { day: 'Tue', farmer: 21, market: 25, predicted: 24 },
+    { day: 'Wed', farmer: 23, market: 26, predicted: 25 },
+    { 
+        day: 'Today', 
+        farmer: Number(data?.current || 0), 
+        market: Number(data?.market_average || 0), 
+        predicted: Number(data?.predicted || 0) 
+    },
+=======
   // In a real app, you'd fetch a list of PriceHistory records here
   const trendData = [
     { day: 'Mon', farmer: 22, market: 24, predicted: 23 },
     { day: 'Tue', farmer: 21, market: 25, predicted: 24 },
     { day: 'Wed', farmer: 23, market: 26, predicted: 25 },
     { day: 'Today', farmer: data?.current, market: data?.market_average, predicted: data?.predicted },
+>>>>>>> 21815d8f14fb771ea61b4529855f6e39448e5c59
   ];
 
   return (
@@ -67,9 +104,32 @@ const PriceDashboard = ({ productId }: { productId: number }) => {
                 contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
               />
               <Legend iconType="circle" verticalAlign="top" height={36}/>
-              <Line type="monotone" dataKey="farmer" stroke="#10b981" strokeWidth={3} dot={{ r: 6 }} name="My Price" />
-              <Line type="monotone" dataKey="market" stroke="#3b82f6" strokeWidth={3} dot={{ r: 6 }} name="Market Avg" />
-              <Line type="dashed" dataKey="predicted" stroke="#a855f7" strokeWidth={2} strokeDasharray="5 5" name="AI Forecast" />
+              
+              <Line 
+                type="monotone" 
+                dataKey="farmer" 
+                stroke="#10b981" 
+                strokeWidth={3} 
+                dot={{ r: 6 }} 
+                name="My Price" 
+              />
+              <Line 
+                type="monotone" 
+                dataKey="market" 
+                stroke="#3b82f6" 
+                strokeWidth={3} 
+                dot={{ r: 6 }} 
+                name="Market Avg" 
+              />
+              {/* FIXED: Changed type from "dashed" to "monotone" and used strokeDasharray */}
+              <Line 
+                type="monotone" 
+                dataKey="predicted" 
+                stroke="#a855f7" 
+                strokeWidth={2} 
+                strokeDasharray="5 5" 
+                name="AI Forecast" 
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
