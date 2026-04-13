@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { 
   ArrowLeft, 
+  Info,
   Sprout, 
   Banknote, 
   CheckCircle2, 
