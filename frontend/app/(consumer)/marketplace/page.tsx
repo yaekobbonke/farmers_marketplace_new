@@ -1,5 +1,4 @@
 "use client";
-
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { ProductCard, Product } from "@/components/ProductCard";
 import { Search, RefreshCw, TrendingUp, Target, BarChart2 } from "lucide-react";
