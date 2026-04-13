@@ -12,20 +12,13 @@ interface Prediction {
   predictedPrice: number;
 }
 
-<<<<<<< HEAD
 // Inside your ProductCard file
 export interface Product {  // <--- Added 'export'
   _id: string;
   name: string;
   type: string; 
   price: number; // The component expects a number
-=======
-interface Product {
-  _id: string;
-  name: string;
-  type: string; 
-  price: number;
->>>>>>> 21815d8f14fb771ea61b4529855f6e39448e5c59
+  category?: string
   location?: string;
   unit?: string; 
   farmer_name?: string; 
