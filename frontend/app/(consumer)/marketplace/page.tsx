@@ -169,7 +169,7 @@ export default function MarketplacePage() {
               ))
             ) : (
               <div className="col-span-full text-center py-20 text-slate-400 font-medium">
-                No products found matching  &quot; {searchQuery} &quot;.
+                No products found matching&quot;{searchQuery}&quot;.
               </div>
             )}
           </div>
