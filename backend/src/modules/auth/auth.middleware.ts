@@ -13,10 +13,9 @@ declare global {
         }
     }
 }
-
 export const authenticate = (req: Request, res: Response, next: NextFunction) => {
     const auth = req.headers.authorization;
-    if (!auth || !auth.startsWith("Bearer ")) {
+    if (!auth || !auth.startsWith("Bearer")) {
         return res.status(401).json({ message: "Unauthorized" });
     }
 
