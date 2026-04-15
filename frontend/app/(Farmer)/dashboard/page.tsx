@@ -182,7 +182,7 @@ export default function FarmerDashboard() {
                 <p className="text-slate-400 text-sm leading-relaxed mb-6">
                   Based on your {stats.totalProducts} listings, AI suggests increasing Teff prices by 4% to match current market trends.
                 </p>
-                <button className="w-full py-3 bg-green-600 cursor-pointer hover:bg-green-500 rounded-xl font-bold text-sm transition-all">
+                <button className="w-full py-3 bg-green-600 hover:bg-green-500 hover:cursor-pointer rounded-xl font-bold text-sm transition-all">
                   Apply Suggestions
                 </button>
               </div>
