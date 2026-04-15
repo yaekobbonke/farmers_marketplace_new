@@ -1,5 +1,6 @@
 "use client";
 
+import api from "@/lib/api"; // Now using the authenticated instance
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { 
@@ -28,10 +29,9 @@ export default function FarmerDashboard() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Real-time calculated stats
   const [stats, setStats] = useState({
     totalProducts: 0,
-    activeOrders: 0, // This would require an /api/orders endpoint eventually
+    activeOrders: 0, 
     revenue: 0,
     lowStockCount: 0
   });
@@ -40,34 +40,42 @@ export default function FarmerDashboard() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // 1. Fetch real products from your Express API
-        const res = await fetch("http://localhost:5000/api/product");
-        const json = await res.json();
-        const data: Product[] = json.data || (Array.isArray(json) ? json : []);
+        
+        const response = await api.get("/product");
+        
+        // Handle different possible response structures
+        const data: Product[] = response.data.data || (Array.isArray(response.data) ? response.data : []);
 
-        // 2. Calculate "Real" Metrics
         const totalValue = data.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
         const lowStock = data.filter(p => p.quantity < 10).length;
 
         setProducts(data);
         setStats({
           totalProducts: data.length,
-          activeOrders: 5, // Keep as placeholder until you build Orders table
+          activeOrders: 5, 
           revenue: totalValue,
           lowStockCount: lowStock
         });
-      } catch (err) {
+      } catch (err: any) {
         console.error("Dashboard Stats Error:", err);
+        
+        // Optional: Redirect to login if token is invalid/expired
+        if (err.response?.status === 401) {
+          router.push("/login");
+        }
       } finally {
         setLoading(false);
       }
     };
     fetchData();
-  }, []);
+  }, [router]);
 
-  // Format currency to ETB
   const formatETB = (val: number) => 
-    new Intl.NumberFormat('en-ET', { style: 'currency', currency: 'ETB' }).format(val);
+    new Intl.NumberFormat('en-ET', { 
+        style: 'currency', 
+        currency: 'ETB',
+        maximumFractionDigits: 0 
+    }).format(val);
 
   return (
     <div className="min-h-screen bg-[#fbfcfd] p-4 md:p-8">
@@ -142,7 +150,7 @@ export default function FarmerDashboard() {
                   <div key={product.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl hover:bg-slate-100 transition-colors cursor-pointer group">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center border border-slate-200">
-                        <span className="font-black text-xs text-slate-400">{product.unit}</span>
+                        <span className="font-black text-xs text-slate-400 uppercase">{product.unit}</span>
                       </div>
                       <div>
                         <p className="font-bold text-slate-800">{product.name}</p>
@@ -172,7 +180,7 @@ export default function FarmerDashboard() {
                 </div>
                 <h4 className="text-2xl font-black mb-2">Price Optimization</h4>
                 <p className="text-slate-400 text-sm leading-relaxed mb-6">
-                  Based on your {stats.totalProducts} listings, AI suggests increasing Teff prices by 4% to match the current Addis Ababa average.
+                  Based on your {stats.totalProducts} listings, AI suggests increasing Teff prices by 4% to match current market trends.
                 </p>
                 <button className="w-full py-3 bg-green-600 hover:bg-green-500 rounded-xl font-bold text-sm transition-all">
                   Apply Suggestions
@@ -187,7 +195,7 @@ export default function FarmerDashboard() {
                 <div>
                   <p className="font-black text-red-900 text-sm uppercase">Critical Stock</p>
                   <p className="text-red-700 text-xs font-medium mt-1">
-                    {stats.lowStockCount} items are almost sold out. Update soon to avoid losing buyers.
+                    {stats.lowStockCount} items are almost sold out. Update soon.
                   </p>
                 </div>
               </div>
