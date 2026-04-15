@@ -178,7 +178,7 @@ export default function FarmerDashboard() {
                   <TrendingUp className="text-green-400" size={18} />
                   <span className="text-xs font-black uppercase tracking-widest text-green-400">Regional Forecast</span>
                 </div>
-                <h4 className="text-2xl font-black mb-2">Price Optimization</h4>
+                <h4 className="text-xl font-black mb-2">Price Optimization</h4>
                 <p className="text-slate-400 text-sm leading-relaxed mb-6">
                   Based on your {stats.totalProducts} listings, AI suggests increasing Teff prices by 4% to match current market trends.
                 </p>
