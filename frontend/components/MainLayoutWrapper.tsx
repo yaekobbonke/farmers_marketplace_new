@@ -96,7 +96,7 @@ export default function MainLayoutWrapper({ children }: { children: React.ReactN
 
   const handleLogout = () => {
     localStorage.clear();
-    router.push("/login");
+    router.replace("/login");
   };
 
   if (isAuthPage || isStandalonePage) {
