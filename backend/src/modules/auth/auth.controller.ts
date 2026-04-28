@@ -4,7 +4,7 @@ import { registerSchema, loginSchema } from "./auth.schema";
 
 export class AuthController {
   static async register(req: Request, res: Response, next: NextFunction) {
-    console.log("🔥 BODY RECEIVED:", req.body)
+  
     try {
       const data = registerSchema.parse(req.body);
       const { userId } = await AuthService.register(data);

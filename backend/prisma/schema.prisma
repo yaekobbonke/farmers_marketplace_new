@@ -18,6 +18,7 @@ model User {
   updatedAt  DateTime  @updatedAt
   location    String?
   isActive   Boolean   @default(true)
+  is_suspended Boolean @default(false)
   cart       Cart?
   orders     Order[]
   products   Product[]
@@ -44,6 +45,7 @@ model Product {
   price            Decimal           @db.Decimal(10, 2)
   description      String?
   location         String?
+  is_verified      Boolean @default(false)
   farmerId         Int
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt

@@ -12,16 +12,32 @@
     "prisma:migrate": "npx prisma migrate dev",
     "prisma:deploy": "npx prisma migrate deploy"
   },
-  "keywords": ["Farmers-MarketPlace", "Price-Intelligence", "Agriculture", "products", "system", "backend", "API", "Node.js", "Express", "Prisma", "PostgreSQL", "authentication"],
+  "keywords": [
+    "Farmers-MarketPlace",
+    "Price-Intelligence",
+    "Agriculture",
+    "products",
+    "system",
+    "backend",
+    "API",
+    "Node.js",
+    "Express",
+    "Prisma",
+    "PostgreSQL",
+    "authentication"
+  ],
   "author": "Yaekob Bonke Bundure",
   "license": "ISC",
   "type": "commonjs",
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
-    "@types/node": "^24.10.1",
+    "@types/node": "^24.12.2",
     "@types/pg": "^8.20.0",
     "prisma": "^7.1.0",
     "ts-node": "^10.9.2",

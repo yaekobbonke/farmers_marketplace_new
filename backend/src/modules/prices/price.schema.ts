@@ -9,7 +9,7 @@ export const recordPriceSchema = z.object({
 
 export const marketPriceSchema = z.object({
   crop: z.string().min(2),
-  //productId: z.number().int().positive(),
+  productId: z.number().int().positive(),
   market: z.string().min(2),
   price: z.number().positive(),
   unit: z.string().default("kg"),

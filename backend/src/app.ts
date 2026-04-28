@@ -32,7 +32,7 @@ app.get("/", (req, res) => {
 });
 
 // 5. CRON & ERROR HANDLING
-initScraperCron();
+//initScraperCron();
 app.use(errorHandler); // Always last
 
 export default app;

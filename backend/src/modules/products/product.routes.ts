@@ -44,8 +44,7 @@ router.delete(
  * NOTE: 
  * AI Prediction and Market Data routes are currently in price.route.ts.
  * Ensure your frontend calls:
- * - GET /api/v1/prices/:id/predict for the XGBoost forecast
- * - GET /api/v1/prices/latest for the Llama 3 context
+ 
  */
 
 export default router;

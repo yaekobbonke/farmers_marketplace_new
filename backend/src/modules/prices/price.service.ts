@@ -4,50 +4,77 @@ import { aiClient } from '../../lib/ai-client';
 export class PriceService {
   /**
    * Orchestrates the 3-source AI prediction.
-   * Now passes IDs to satisfy the XGBoost feature requirements.
    */
   static async getAIPrediction(productId: number) {
+    // 1. Fetch data with the safety check from provider
     const signals = await PriceProvider.getPriceSignals(productId);
+    
+    // Check if the product even exists before trying to predict
+    if (!signals || signals.product_name === "Unknown") {
+      throw new Error("Could not retrieve valid product signals for prediction.");
+    }
 
-    // 1. Call FastAPI with the exact fields the model now expects
-    const response = await aiClient.post('/forecast/predict', {
-      farmer_price: Number(signals.farmer_price),
-      scraped_price: Number(signals.scraped_price),
-      historical_avg: Number(signals.historical_avg),
-      cm_id: productId, // Passing the actual Product ID as cm_id
-      mkt_id: 1        // Defaulting to 1 (e.g., Addis Ababa Market)
-    });
+    try {
+      // 2. Call FastAPI Forecast Engine
+      // Ensure the keys match what your Python FastAPI PriceInference schema expects
+      const response = await aiClient.post('/forecast/predict', {
+        admin1: "ADDIS ABABA", // Defaulting for general prediction context
+        market_id: 1,
+        commodity_id: productId,
+        category: "CEREALS",
+        commodity: signals.product_name,
+        latitude: 9.02,
+        longitude: 38.75,
+        rfq: signals.scraped_price || signals.farmer_price, // Use scraped as baseline if available
+        r3q: signals.historical_avg
+      });
 
-    const prediction = response.data.predicted_price;
+      const prediction = response.data.prediction.predicted_price_etb;
 
-    // 2. Persist prediction
-    await PriceProvider.savePrediction(productId, prediction);
+      // 3. Persist prediction to PostgreSQL only if valid
+      if (prediction) {
+        await PriceProvider.savePrediction(productId, prediction);
+      }
 
-    return {
-      current: signals.farmer_price,
-      market_average: signals.scraped_price,
-      predicted: prediction
-    };
+      return {
+        product: signals.product_name,
+        current: signals.farmer_price,
+        market_average: signals.scraped_price,
+        predicted: prediction,
+        trend: prediction > signals.farmer_price ? "Increasing" : "Decreasing",
+        confidence: response.data.metadata.data_freshness || "standard"
+      };
+    } catch (error) {
+      console.error("❌ AI Forecast Engine unreachable:", error);
+      return { 
+        product: signals.product_name, 
+        current: signals.farmer_price, 
+        predicted: null, 
+        error: "AI engine temporarily offline. Please try again later." 
+      };
+    }
   }
 
   /**
-   * Provides a clean data feed for the Llama 3 chatbot context.
+   * Provides a structured feed for the Llama 3 chatbot.
+   * Now handles the resilient mapping from the updated provider.
    */
   static async getRecentMarketSnapshots(limit: number = 10) {
     const rawData = await PriceProvider.getRecentMarketSnapshots(limit);
 
     return rawData.map(item => ({
-      commodity: item.product?.name || "Unknown Product",
+      commodity: item.product || "Agricultural Commodity", // Matches the .product key from resilient provider
       price: item.price,
       market: item.market,
       source: item.source,
       unit: item.unit,
-      recordedAt: item.recordedAt
+      // Formatting the date for the AgriSmart chat interface
+      recordedAt: item.recordedAt ? new Date(item.recordedAt).toLocaleDateString('en-GB') : "Recently"
     }));
   }
 
   /**
-   * Processes data pushed from the BeautifulSoup scraper.
+   * Processes data pushed from the BeautifulSoup/JSON Scraper.
    */
   static async processScrapedData(payload: { 
     name: string; 
@@ -55,17 +82,27 @@ export class PriceService {
     market?: string; 
     unit?: string 
   }) {
+    // 1. Validate payload
+    if (!payload.price || isNaN(payload.price)) {
+      console.error("❌ Invalid price received from scraper.");
+      return null;
+    }
+
+    // 2. Use the improved findProductByName (now handles insensitive and partial matches)
     const product = await PriceProvider.findProductByName(payload.name);
     
     if (!product) {
-      throw new Error(`Product mapping failed: ${payload.name} not found.`);
+      // Very important for your demo: logging missing mappings
+      console.warn(`⚠️ No database mapping found for scraped item: "${payload.name}". Add this product to the dashboard to track it.`);
+      return null; 
     }
 
+    // 3. Persist the official market price linked to the correct ID
     return await PriceProvider.addMarketPrice({
       productId: product.id,
       price: payload.price,
-      market: payload.market || "External Web Market",
-      source: "python-scraper",
+      market: payload.market || "Central Market",
+      source: "Official ECX Daily Scraper",
       unit: payload.unit || "kg"
     });
   }

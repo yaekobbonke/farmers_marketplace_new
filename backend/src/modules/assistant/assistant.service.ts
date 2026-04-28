@@ -5,7 +5,7 @@ export class AssistantService {
    * The Service acts as the business logic layer.
    * In this case, it calls the Provider to initiate the stream from FastAPI.
    */
-  static async chat(query: any) {
+  static async chat(query: string) {
     try {
       // We return the raw stream from the provider
       return await AssistantProvider.chatStream(query);
