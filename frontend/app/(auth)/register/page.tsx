@@ -156,7 +156,7 @@ export default function RegisterPage() {
           <p className="text-xs font-black text-slate-400 uppercase tracking-widest pl-2 pt-2">I am a:</p>
           
           <div className="flex gap-3">
-            {["FARMER", "TRADER", "ADMIN"].map((role) => (
+            {["FARMER", "BUYER", "ADMIN"].map((role) => (
               <button
                 key={role}
                 type="button"
