@@ -1,68 +1,69 @@
 import requests
 from bs4 import BeautifulSoup
-import os
-import re
-from dotenv import load_dotenv
+import json
 
-load_dotenv()
-
-# Internal mapping for Ethiopian units to KG
-UNIT_MULTIPLIERS = {
-    "quintal": 100.0,
-    "kg": 1.0,
-    "ton": 1000.0,
-    "ኩንታል": 100.0, # Amharic support
-    "ኪሎ": 1.0
-}
-
-def clean_ethiopian_price(text):
-    """Removes 'ETB', commas, and Amharic currency strings."""
-    # Regex to extract only numbers and decimals
-    numeric_part = re.sub(r'[^\d.]', '', text.replace(',', ''))
-    return float(numeric_part) if numeric_part else 0.0
-
-def scrape_ethiopian_commodities():
-    # Example: Targeting an Ethiopian Agri-Market page
-    TARGET_URL = "https://nbe.gov.et/exchange/price-of-commodities/" 
+def get_live_ecx_intelligence():
+    base_url = "https://www.2merkato.com"
+    listing_url = f"{base_url}/news/capital-market-and-commodity-exchange"
+    
+    print("📡 Step 1: Locating latest ECX Daily Report...")
     
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        response = requests.get(TARGET_URL, headers=headers, timeout=15)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        # 1. Get the latest article link
+        resp = requests.get(listing_url)
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        latest_item = soup.find('div', class_='items-row')
+        article_link = base_url + latest_item.find('a')['href']
+        report_date = latest_item.find('a').text.split('–')[-1].strip()
+        
+        print(f"✅ Found Report for: {report_date}")
+        
+        # 2. Scrape the actual price table inside the article
+        print("📡 Step 2: Extracting price data...")
+        article_resp = requests.get(article_link)
+        article_soup = BeautifulSoup(article_resp.text, 'html.parser')
+        
+        prices = []
+        # ECX data on 2merkato is usually in <table> tags
+        tables = article_soup.find_all('table')
+        
+        for table in tables:
+            rows = table.find_all('tr')
+            for row in rows[1:]:  # Skip header row
+                cols = row.find_all('td')
+                if len(cols) >= 3:
+                    item_name = cols[0].text.strip()
+                    symbol = cols[1].text.strip()
+                    avg_price = cols[2].text.strip().replace(',', '')
+                    
+                    # Basic normalization
+                    try:
+                        price_val = float(avg_price)
+                        # Identify if it's Coffee (Feresula) or Other (Quintal)
+                        unit = "KG"
+                        normalized_price = price_val / 17 if symbol in ['LU', 'LW'] else price_val / 100
+                        
+                        prices.append({
+                            "commodity": item_name,
+                            "symbol": symbol,
+                            "price_per_kg": round(normalized_price, 2),
+                            "original_price": price_val,
+                            "date": report_date
+                        })
+                    except ValueError:
+                        continue
 
-        # Assuming the site uses a table for Teff, Wheat, Maize, etc.
-        rows = soup.select('table#price-table tr')[1:] # Skip header
-
-        for row in rows:
-            cols = row.find_all('td')
-            if len(cols) >= 3:
-                raw_name = cols[0].text.strip()
-                raw_price = cols[1].text.strip()
-                raw_unit = cols[2].text.strip().lower()
-
-                price_val = clean_ethiopian_price(raw_price)
-                
-                # Normalize units to KG for your database
-                multiplier = UNIT_MULTIPLIERS.get(raw_unit, 1.0)
-                price_per_kg = price_val / multiplier if multiplier > 0 else price_val
-
-                payload = {
-                    "name": raw_name,
-                    "price": round(price_per_kg, 2),
-                    "market": "Addis Ababa Central Market",
-                    "unit": "kg" # Standardizing everything to KG in DB
-                }
-
-                sync_to_backend(payload)
+        # 3. Save as Intelligence JSON for your Next.js frontend
+        with open('market_intelligence.json', 'w') as f:
+            json.dump(prices, f, indent=2)
+            
+        print(f"🚀 Success! Extracted {len(prices)} live price points.")
+        return prices
 
     except Exception as e:
-        print(f"Scraping Error: {e}")
-
-def sync_to_backend(data):
-    # Same sync logic as before using your INTERNAL_SECRET
-    endpoint = f"{os.getenv('BACKEND_URL')}/prices/internal/sync"
-    headers = {"x-internal-secret": os.getenv("INTERNAL_SECRET")}
-    requests.post(endpoint, json=data, headers=headers)
+        print(f"❌ Intelligence Error: {e}")
 
 if __name__ == "__main__":
-    scrape_ethiopian_commodities()
+    data = get_live_ecx_intelligence()
+    for entry in data[:5]: # Show first 5 entries
+        print(f"💡 {entry['commodity']} ({entry['symbol']}): {entry['price_per_kg']} ETB/kg")

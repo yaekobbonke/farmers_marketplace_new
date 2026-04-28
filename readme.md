@@ -13,6 +13,17 @@ Implemented Authentication logic
 npx tsc --init       //creates tsconfig.json file go
 
 Product CRUD Endpoints
+PHASE 4 — PRODUCTS MODULE
+What this module will do
+
+#Farmers create products (crop / livestock)
+#Buyers view products
+#Filter by category, location, price
+
+This module will later power:
+-price intelligence
+-semantic search
+-recommendations
 
 
 Cart & Cart Items
