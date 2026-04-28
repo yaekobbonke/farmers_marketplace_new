@@ -3,16 +3,20 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  User, Mail, Lock, ArrowRight,
-  Sprout, AlertCircle, CheckCircle2,
-  Phone, MapPin
+  ArrowRight,
+  Sprout,
+  AlertCircle,
+  CheckCircle2,
+  Loader2
 } from "lucide-react";
 import Link from "next/link";
-import api from "@/lib/api"; // ✅ Import your axios instance
+import api from "@/lib/api"; 
 
 export default function RegisterPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  // New state for password confirmation
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   const [status, setStatus] = useState<{
     type: "error" | "success" | null;
@@ -34,17 +38,25 @@ export default function RegisterPage() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    console.log("📤 Sending with Axios:", formData);
+    
+    // 1. Password Confirmation Logic
+    if (formData.password !== confirmPassword) {
+      return setStatus({
+        type: "error",
+        message: "Passwords do not match!",
+      });
+    }
 
     setLoading(true);
     setStatus({ type: null, message: "" });
 
     try {
-      // ✅ Axios automatically stringifies the body
-      const response = await api.post("/auth/register", formData);
+      const payload = { 
+        ...formData, 
+        role: formData.role.toUpperCase() 
+      };
 
-      console.log("📥 Response:", response.data);
+      const response = await api.post("/auth/register", payload);
 
       setStatus({
         type: "success",
@@ -53,15 +65,8 @@ export default function RegisterPage() {
 
       setTimeout(() => router.push("/login"), 2000);
     } catch (err: any) {
-      // ✅ Axios puts the server error response in err.response
-      console.error("❌ Axios error:", err);
-      
-      const errorMessage = err.response?.data?.message || "Server connection failed.";
-      
-      setStatus({
-        type: "error",
-        message: errorMessage,
-      });
+      const errorMessage = err.response?.data?.message || "Registration failed. Try again.";
+      setStatus({ type: "error", message: errorMessage });
     } finally {
       setLoading(false);
     }
@@ -83,9 +88,7 @@ export default function RegisterPage() {
         {/* Status Messages */}
         {status.type && (
           <div className={`mb-6 p-4 rounded-2xl flex items-center gap-3 font-bold text-sm animate-in fade-in zoom-in duration-300 ${
-            status.type === "error"
-              ? "bg-red-50 text-red-600"
-              : "bg-green-50 text-green-600"
+            status.type === "error" ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
           }`}>
             {status.type === "error" ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
             {status.message}
@@ -99,14 +102,14 @@ export default function RegisterPage() {
               value={formData.first_name}
               onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
               placeholder="First Name"
-              className="w-full p-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-green-500 outline-none font-bold"
+              className="w-full p-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-green-500 outline-none font-bold placeholder:text-slate-300"
             />
             <input
               required
               value={formData.last_name}
               onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
               placeholder="Last Name"
-              className="w-full p-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-green-500 outline-none font-bold"
+              className="w-full p-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-green-500 outline-none font-bold placeholder:text-slate-300"
             />
           </div>
 
@@ -116,7 +119,7 @@ export default function RegisterPage() {
             value={formData.email}
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
             placeholder="Email Address"
-            className="w-full p-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-green-500 outline-none font-bold"
+            className="w-full p-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-green-500 outline-none font-bold placeholder:text-slate-300"
           />
 
           <input
@@ -124,63 +127,63 @@ export default function RegisterPage() {
             value={formData.phone}
             onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
             placeholder="Phone Number"
-            className="w-full p-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-green-500 outline-none font-bold"
+            className="w-full p-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-green-500 outline-none font-bold placeholder:text-slate-300"
           />
 
-          <input
-            value={formData.location}
-            onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-            placeholder="Location (City, Region)"
-            className="w-full p-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-green-500 outline-none font-bold"
-          />
-
-          <input
-            required
-            type="password"
-            value={formData.password}
-            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-            placeholder="Password"
-            className="w-full p-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-green-500 outline-none font-bold"
-          />
-
-          {/* Role Toggle */}
-          <div className="flex gap-4 pt-2">
-            <button
-              type="button"
-              onClick={() => setFormData({ ...formData, role: "FARMER" })}
-              className={`flex-1 py-3 rounded-2xl font-bold transition-all ${
-                formData.role === "FARMER" 
-                ? "bg-green-600 text-white shadow-md shadow-green-100" 
-                : "bg-slate-50 text-slate-400"
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input
+              required
+              type="password"
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              placeholder="Password"
+              className="w-full p-4 rounded-2xl bg-slate-50 border-none focus:ring-2 focus:ring-green-500 outline-none font-bold placeholder:text-slate-300"
+            />
+            <input
+              required
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm Password"
+              className={`w-full p-4 rounded-2xl bg-slate-50 border-none focus:ring-2 outline-none font-bold placeholder:text-slate-300 ${
+                confirmPassword && formData.password !== confirmPassword 
+                ? "ring-2 ring-red-400" 
+                : "focus:ring-green-500"
               }`}
-            >
-              Farmer
-            </button>
-            <button
-              type="button"
-              onClick={() => setFormData({ ...formData, role: "BUYER" })}
-              className={`flex-1 py-3 rounded-2xl font-bold transition-all ${
-                formData.role === "BUYER" 
-                ? "bg-green-600 text-white shadow-md shadow-green-100" 
-                : "bg-slate-50 text-slate-400"
-              }`}
-            >
-              Buyer
-            </button>
+            />
+          </div>
+
+          <p className="text-xs font-black text-slate-400 uppercase tracking-widest pl-2 pt-2">I am a:</p>
+          
+          <div className="flex gap-3">
+            {["FARMER", "TRADER", "ADMIN"].map((role) => (
+              <button
+                key={role}
+                type="button"
+                onClick={() => setFormData({ ...formData, role })}
+                className={`flex-1 py-3 rounded-2xl font-bold transition-all text-xs ${
+                  formData.role === role 
+                  ? "bg-green-600 text-white shadow-lg shadow-green-100 scale-105" 
+                  : "bg-slate-50 text-slate-400 border border-transparent hover:border-slate-200"
+                }`}
+              >
+                {role}
+              </button>
+            ))}
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-5 bg-slate-900 text-white font-black text-lg rounded-2xl hover:bg-black disabled:bg-slate-400 transition-all flex items-center justify-center gap-2 mt-4"
+            className="w-full py-5 bg-slate-900 text-white font-black text-lg rounded-2xl hover:bg-black disabled:bg-slate-300 transition-all flex items-center justify-center gap-2 mt-4 shadow-xl shadow-slate-200"
           >
-            {loading ? "CREATING ACCOUNT..." : "CREATE ACCOUNT"}
+            {loading ? <Loader2 className="animate-spin" size={24} /> : "CREATE ACCOUNT"}
             {!loading && <ArrowRight size={20} />}
           </button>
         </form>
 
         <p className="text-center mt-8 text-sm font-bold text-slate-400">
-          Already have an account? <Link href="/login" className="text-green-600 hover:underline">Sign In</Link>
+          Already a member? <Link href="/login" className="text-green-600 hover:underline">Sign In</Link>
         </p>
       </div>
     </div>

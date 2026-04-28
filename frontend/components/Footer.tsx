@@ -5,7 +5,7 @@ import { Sprout, Globe, Mail, ExternalLink } from "lucide-react";
 
 export default function Footer() {
   return (
-    <footer className="bg-slate-950 text-slate-400 border-t border-slate-900 pt-10 pb-10 px-6">
+    <footer className="bg-slate-950 text-slate-400 border-t border-slate-900 pt-0 pb-10 px-6">
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
         
         {/* Branding Section */}

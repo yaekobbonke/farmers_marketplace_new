@@ -1,11 +1,10 @@
 "use client";
 
-import api from "@/lib/api"; // Now using the authenticated instance
-import React, { useState, useEffect } from "react";
+import api from "@/lib/api"; 
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { 
   LayoutDashboard, 
-  ShoppingBasket, 
   TrendingUp, 
   Plus, 
   ArrowUpRight, 
@@ -14,6 +13,10 @@ import {
   ChevronRight,
   Loader2
 } from "lucide-react";
+import { AxiosError } from "axios";
+
+// Import your new MarketTable component
+import MarketTable from "@/components/MarketTable"; 
 
 interface Product {
   id: number;
@@ -40,10 +43,7 @@ export default function FarmerDashboard() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        
         const response = await api.get("/product");
-        
-        // Handle different possible response structures
         const data: Product[] = response.data.data || (Array.isArray(response.data) ? response.data : []);
 
         const totalValue = data.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
@@ -56,12 +56,11 @@ export default function FarmerDashboard() {
           revenue: totalValue,
           lowStockCount: lowStock
         });
-      } catch (err: any) {
-        console.error("Dashboard Stats Error:", err);
-        
-        // Optional: Redirect to login if token is invalid/expired
-        if (err.response?.status === 401) {
-          router.push("/login");
+      } catch (err) {
+        const error = err as AxiosError<{ message: string }>;
+        console.error("Dashboard Stats Error:", error.response?.data?.message || error.message);
+        if (error.response?.status === 401) {
+          router.replace("/login");
         }
       } finally {
         setLoading(false);
@@ -201,8 +200,17 @@ export default function FarmerDashboard() {
               </div>
             )}
           </div>
-
         </div>
+
+        {/* --- LIVE MARKET FEED SECTION --- */}
+        <div className="pt-4">
+          <div className="mb-4">
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Market Intelligence</h3>
+            <p className="text-slate-500 text-sm font-medium">Real-time prices from ECX and local regional hubs</p>
+          </div>
+          <MarketTable />
+        </div>
+
       </div>
     </div>
   );
