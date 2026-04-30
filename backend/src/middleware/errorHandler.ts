@@ -2,25 +2,26 @@ import { Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
 
 export function errorHandler(err: any, req: Request, res: Response, next: NextFunction) {
-    console.error("❌ [Backend Error]:", err.message || err);
+    console.error("[Backend Error]:", err.message || err);
 
-    // Check if it's a Zod Error AND has the errors array
+    // Check if it's a Zod Error
     if (err instanceof ZodError) {
         return res.status(400).json({
             success: false,
-            message: err.errors?.[0]?.message || "Validation failed", // Added optional chaining ?.
-            details: err.errors
+            message: err.issues?.[0]?.message || "Validation failed",
+            details: err.issues  // Use 'issues' instead of 'errors'
         });
     }
 
-    // Prisma error check
+    // Prisma unique constraint error
     if (err.code === "P2002") {
         return res.status(409).json({
             success: false,
-            message: "User with this email already exists."
+            message: "A record with this unique field already exists."
         });
     }
 
+    // Default error response
     const status = err.status || 500;
     return res.status(status).json({
         success: false,

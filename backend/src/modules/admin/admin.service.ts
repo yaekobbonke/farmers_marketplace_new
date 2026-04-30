@@ -10,14 +10,14 @@ export class AdminService {
       prisma.user.count(),
       prisma.product.count(),
       prisma.order.aggregate({
-        _sum: { totalPrice: true },
+        _sum: { totalAmount: true },  // ✅ Changed from 'totalPrice' to 'totalAmount'
       }),
     ]);
 
     return {
       userCount,
       productCount,
-      revenue: totalRevenue._sum.totalPrice || 0,
+      revenue: totalRevenue._sum.totalAmount || 0,  // ✅ Also update this reference
     };
   }
 
@@ -58,20 +58,21 @@ export class AdminService {
       data: { is_suspended: isSuspended },
     });
   }
+
   static async getAllUsers() {
-  return prisma.user.findMany({
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      is_suspended: true,
-      createdAt: true,
-      _count: {
-        select: { products: true, orders: true } // Shows how active they are
-      }
-    },
-    orderBy: { createdAt: 'desc' }
-  });
-}
+    return prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        is_suspended: true,
+        createdAt: true,
+        _count: {
+          select: { products: true, orders: true } // Shows how active they are
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+  }
 }
