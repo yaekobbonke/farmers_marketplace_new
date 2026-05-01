@@ -1,4 +1,4 @@
-import jwt, { SignOptions, VerifyOptions } from "jsonwebtoken";
+const jwt = require('jsonwebtoken');
 
 const JWT_SECRET: string = process.env.JWT_SECRET || "jackman@Bonke";
 
@@ -9,28 +9,19 @@ export interface TokenPayload {
   is_suspended?: boolean;
 }
 
-const signOptions: SignOptions = {
-  expiresIn: "7d",
-  algorithm: "HS256"
-};
-
-const verifyOptions: VerifyOptions = {
-  algorithms: ["HS256"]
-};
-
 export function signToken(payload: TokenPayload): string {
-  return jwt.sign(payload, JWT_SECRET, signOptions);
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
 }
 
 export function verifyToken(token: string): TokenPayload {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET, verifyOptions);
+    const decoded = jwt.verify(token, JWT_SECRET);
     return decoded as TokenPayload;
-  } catch (error) {
-    if (error instanceof jwt.TokenExpiredError) {
+  } catch (error: any) {
+    if (error.name === "TokenExpiredError") {
       throw new Error("Token has expired");
     }
-    if (error instanceof jwt.JsonWebTokenError) {
+    if (error.name === "JsonWebTokenError") {
       throw new Error("Invalid token");
     }
     throw error;
