@@ -1,6 +1,9 @@
 import prisma from "../../config/prisma";
 
 export class AdminService {
+  /**
+   * Get system statistics (user count, product count, revenue)
+   */
   static async getSystemStats() {
     const [userCount, productCount, totalRevenue] = await Promise.all([
       prisma.user.count(),
@@ -17,8 +20,11 @@ export class AdminService {
     };
   }
 
+  /**
+   * Get all products awaiting verification
+   */
   static async getPendingProducts() {
-    const products = await prisma.product.findMany({
+    return prisma.product.findMany({
       where: { is_verified: false },
       include: { 
         farmer: {
@@ -31,33 +37,49 @@ export class AdminService {
       },
       orderBy: { createdAt: "desc" },
     });
-
-    // Add a fullName field for convenience
-    return products.map(product => ({
-      ...product,
-      farmer: product.farmer ? {
-        ...product.farmer,
-        fullName: `${product.farmer.first_name} ${product.farmer.last_name}`
-      } : null
-    }));
   }
 
+  /**
+   * Verify a product (approve it for marketplace)
+   */
   static async verifyProduct(id: number) {
+    const product = await prisma.product.findUnique({
+      where: { id }
+    });
+
+    if (!product) {
+      throw new Error("Product not found");
+    }
+
     return prisma.product.update({
       where: { id },
       data: { is_verified: true },
     });
   }
 
+  /**
+   * Toggle user suspension status
+   */
   static async toggleUserStatus(id: number, isSuspended: boolean) {
+    const user = await prisma.user.findUnique({
+      where: { id }
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
     return prisma.user.update({
       where: { id },
       data: { is_suspended: isSuspended },
     });
   }
 
+  /**
+   * Get all users with their activity counts
+   */
   static async getAllUsers() {
-    const users = await prisma.user.findMany({
+    return prisma.user.findMany({
       select: {
         id: true,
         first_name: true,
@@ -72,11 +94,277 @@ export class AdminService {
       },
       orderBy: { createdAt: 'desc' }
     });
+  }
 
-    // Add a fullName field for each user
-    return users.map(user => ({
-      ...user,
-      fullName: `${user.first_name} ${user.last_name}`
-    }));
+  /**
+   * Delete a single product
+   */
+  static async deleteProduct(productId: number) {
+    try {
+      // Check if product exists
+      const product = await prisma.product.findUnique({
+        where: { id: productId },
+        include: {
+          farmer: {
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      if (!product) {
+        throw new Error("Product not found");
+      }
+
+      // Delete the product
+      const deletedProduct = await prisma.product.delete({
+        where: { id: productId }
+      });
+
+      return {
+        success: true,
+        message: `Product "${product.name}" has been deleted successfully`,
+        data: {
+          id: deletedProduct.id,
+          name: deletedProduct.name,
+          price: deletedProduct.price,
+          farmer: product.farmer,
+          deletedAt: new Date().toISOString()
+        }
+      };
+    } catch (error: any) {
+      console.error("Error deleting product:", error);
+      
+      if (error.code === "P2003") {
+        throw new Error("Cannot delete product because it has existing orders. Consider marking as inactive instead.");
+      }
+      
+      throw new Error(error.message || "Failed to delete product");
+    }
+  }
+
+  /**
+   * Delete a single user (soft delete by default, use hardDelete for permanent)
+   */
+  static async deleteUser(userId: number, hardDelete: boolean = false) {
+    try {
+      // Check if user exists
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          _count: {
+            select: { products: true, orders: true, cartItems: true }
+          }
+        }
+      });
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      // Prevent deleting the last admin
+      if (user.role === "ADMIN") {
+        const adminCount = await prisma.user.count({
+          where: { role: "ADMIN" }
+        });
+        
+        if (adminCount === 1) {
+          throw new Error("Cannot delete the only admin user");
+        }
+      }
+
+      let result;
+      
+      if (hardDelete) {
+        // Hard delete: Remove user and all related data
+        result = await prisma.user.delete({
+          where: { id: userId }
+        });
+        
+        return {
+          success: true,
+          message: `User "${user.email}" has been permanently deleted`,
+          data: {
+            ...result,
+            deletedProducts: user._count.products,
+            deletedOrders: user._count.orders
+          }
+        };
+      } else {
+        // Soft delete: Just mark as suspended
+        result = await prisma.user.update({
+          where: { id: userId },
+          data: { is_suspended: true }
+        });
+        
+        return {
+          success: true,
+          message: `User "${user.email}" has been suspended`,
+          data: result
+        };
+      }
+    } catch (error: any) {
+      console.error("Error deleting user:", error);
+      throw new Error(error.message || "Failed to delete user");
+    }
+  }
+
+  /**
+   * Delete multiple products at once
+   */
+  static async bulkDeleteProducts(productIds: number[]) {
+    try {
+      // First, check which products exist
+      const existingProducts = await prisma.product.findMany({
+        where: {
+          id: { in: productIds }
+        },
+        select: {
+          id: true,
+          name: true
+        }
+      });
+
+      const existingIds = existingProducts.map(p => p.id);
+      const missingIds = productIds.filter(id => !existingIds.includes(id));
+
+      if (existingIds.length === 0) {
+        throw new Error("No valid products found to delete");
+      }
+
+      // Delete existing products
+      const deleted = await prisma.product.deleteMany({
+        where: {
+          id: { in: existingIds }
+        }
+      });
+
+      return {
+        success: true,
+        message: `${deleted.count} product(s) deleted successfully`,
+        data: {
+          deletedCount: deleted.count,
+          deletedProducts: existingProducts,
+          missingIds: missingIds,
+          missingCount: missingIds.length
+        }
+      };
+    } catch (error: any) {
+      console.error("Error bulk deleting products:", error);
+      throw new Error(error.message || "Failed to delete products");
+    }
+  }
+
+  /**
+   * Delete multiple users at once
+   */
+  static async bulkDeleteUsers(userIds: number[], hardDelete: boolean = false) {
+    try {
+      // Prevent deleting all admins
+      const adminUsers = await prisma.user.findMany({
+        where: {
+          id: { in: userIds },
+          role: "ADMIN"
+        }
+      });
+
+      const adminCount = await prisma.user.count({ where: { role: "ADMIN" } });
+      
+      if (adminUsers.length === adminCount && adminCount > 0) {
+        throw new Error("Cannot delete all admin users");
+      }
+
+      let deleted;
+      if (hardDelete) {
+        deleted = await prisma.user.deleteMany({
+          where: {
+            id: { in: userIds }
+          }
+        });
+      } else {
+        deleted = await prisma.user.updateMany({
+          where: {
+            id: { in: userIds }
+          },
+          data: { is_suspended: true }
+        });
+      }
+
+      return {
+        success: true,
+        message: `${deleted.count} user(s) processed successfully`,
+        count: deleted.count
+      };
+    } catch (error: any) {
+      console.error("Error bulk deleting users:", error);
+      throw new Error(error.message || "Failed to delete users");
+    }
+  }
+
+  /**
+   * Get a single user by ID with full details
+   */
+  static async getUserById(userId: number) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        first_name: true,
+        last_name: true,
+        email: true,
+        role: true,
+        is_suspended: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: {
+          select: {
+            products: true,
+            orders: true,
+            cartItems: true
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    return user;
+  }
+
+  /**
+   * Get a single product by ID with full details including farmer info
+   */
+  static async getProductById(productId: number) {
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        farmer: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            email: true
+          }
+        },
+        _count: {
+          select: {
+            cartItems: true,
+            orderItems: true
+          }
+        }
+      }
+    });
+
+    if (!product) {
+      throw new Error("Product not found");
+    }
+
+    return product;
   }
 }

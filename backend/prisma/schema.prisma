@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  
 }
 
 model User {
@@ -45,6 +46,7 @@ model Product {
   price            Decimal           @db.Decimal(10, 2)
   description      String?
   location         String?
+  
   is_verified      Boolean @default(false)
   farmerId         Int
   createdAt        DateTime          @default(now())
