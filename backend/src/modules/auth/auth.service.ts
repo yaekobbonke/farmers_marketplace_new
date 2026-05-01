@@ -4,10 +4,6 @@ import { RegisterInput, LoginInput } from "./auth.types";
 import { signToken } from "../../utils/jwt";
 
 export class AuthService {
-  /**
-   * Registers a new user.
-   * Now includes the 'role' field (FARMER, BUYER, or ADMIN).
-   */
   static async register(input: RegisterInput): Promise<{ userId: number }> {
     const hashed = await hashPassword(input.password);
 
@@ -20,16 +16,12 @@ export class AuthService {
           email: input.email.toLowerCase().trim(),
           phone: input.phone,
           password: hashed,
-          role: input.role || "BUYER", // Default to Buyer if not specified
+          role: input.role || "BUYER",
         },
-        select: {
-          id: true,
-        },
+        select: { id: true },
       });
       return { userId: user.id };
-       
     } catch (error: any) {
-      // Prisma error code for Unique constraint violation (e.g., email already exists)
       if (error.code === "P2002") {
         throw new Error("USER_ALREADY_EXISTS");
       }
@@ -37,17 +29,14 @@ export class AuthService {
     }
   }
 
-  /**
-   * Validates credentials and generates a JWT.
-   * Includes the role in the token payload so middleware can check permissions.
-   */
   static async login(input: LoginInput): Promise<{ token: string; user: any }> {
     const user = await prisma.user.findUnique({
       where: { email: input.email.toLowerCase().trim() },
       select: {
         id: true,
+        email: true,      // ✅ Added
         password: true,
-        role: true, // 👈 Needed for the JWT payload and frontend logic
+        role: true,
         first_name: true,
         last_name: true,
       },
@@ -56,22 +45,25 @@ export class AuthService {
     if (!user) {
       throw new Error("INVALID_CREDENTIALS");
     }
-  
-    const valid = await comparePassword(input.password, user.password);
 
+    const valid = await comparePassword(input.password, user.password);
     if (!valid) {
       throw new Error("INVALID_CREDENTIALS");
     }
 
-    // Include userId and role in the token for the requireRole middleware
-    const token = signToken({ userId: user.id, role: user.role });
+    // ✅ Fixed: Use { id, email, role } to match TokenPayload
+    const token = signToken({ 
+      id: user.id, 
+      email: user.email, 
+      role: user.role 
+    });
 
-    // Return the token and basic user info for the Frontend State (Zustand/Redux)
     return { 
       token, 
       user: {
         id: user.id,
         name: `${user.first_name} ${user.last_name}`,
+        email: user.email,
         role: user.role
       }
     };
