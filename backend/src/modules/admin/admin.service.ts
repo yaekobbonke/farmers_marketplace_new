@@ -157,7 +157,7 @@ export class AdminService {
         where: { id: userId },
         include: {
           _count: {
-            select: { products: true, orders: true, cartItems: true }
+            select: { products: true, orders: true }
           }
         }
       });
@@ -323,8 +323,7 @@ export class AdminService {
         _count: {
           select: {
             products: true,
-            orders: true,
-            cartItems: true
+            orders: true
           }
         }
       }

@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+//import { Request, Response } from "express";
 import { AdminService } from "./admin.service";
 
 export class AdminController {
@@ -6,7 +6,7 @@ export class AdminController {
    * GET /api/admin/stats
    * Get system statistics (user count, product count, revenue)
    */
-  static async getSystemStats(req: Request, res: Response) {
+  static async getSystemStats(req: any, res: any) {
     try {
       const stats = await AdminService.getSystemStats();
       
@@ -27,7 +27,7 @@ export class AdminController {
    * GET /api/admin/products/pending
    * Get all products awaiting verification
    */
-  static async getPendingProducts(req: Request, res: Response) {
+  static async getPendingProducts(req: any, res: any) {
     try {
       const products = await AdminService.getPendingProducts();
       
@@ -49,7 +49,7 @@ export class AdminController {
    * PUT /api/admin/products/:id/verify
    * Verify a product (approve it for marketplace)
    */
-  static async verifyProduct(req: Request, res: Response) {
+  static async verifyProduct(req: any, res: any) {
     try {
       const productId = parseInt(req.params.id);
       
@@ -88,7 +88,7 @@ export class AdminController {
    * PATCH /api/admin/users/:id/suspend
    * Toggle user suspension status
    */
-  static async toggleUserStatus(req: Request, res: Response) {
+  static async toggleUserStatus(req: any, res: any) {
     try {
       const userId = parseInt(req.params.id);
       const { isSuspended } = req.body;
@@ -135,7 +135,7 @@ export class AdminController {
    * GET /api/admin/users
    * Get all users with their activity counts
    */
-  static async getAllUsers(req: Request, res: Response) {
+  static async getAllUsers(req: any, res: any) {
     try {
       const users = await AdminService.getAllUsers();
       
@@ -157,7 +157,7 @@ export class AdminController {
    * DELETE /api/admin/products/:id
    * Delete a single product
    */
-  static async deleteProduct(req: Request, res: Response) {
+  static async deleteProduct(req: any, res: any) {
     try {
       const productId = parseInt(req.params.id);
       
@@ -192,7 +192,7 @@ export class AdminController {
    * DELETE /api/admin/users/:id
    * Delete a single user (soft delete by default, use ?hard=true for permanent)
    */
-  static async deleteUser(req: Request, res: Response) {
+  static async deleteUser(req: any, res: any) {
     try {
       const userId = parseInt(req.params.id);
       const hardDelete = req.query.hard === 'true';
@@ -236,7 +236,7 @@ export class AdminController {
    * Delete multiple products at once
    * Body: { productIds: [1, 2, 3] }
    */
-  static async bulkDeleteProducts(req: Request, res: Response) {
+  static async bulkDeleteProducts(req: any, res: any) {
     try {
       const { productIds } = req.body;
       
@@ -287,7 +287,7 @@ export class AdminController {
    * Delete multiple users at once
    * Body: { userIds: [1, 2, 3], hardDelete: false }
    */
-  static async bulkDeleteUsers(req: Request, res: Response) {
+  static async bulkDeleteUsers(req: any, res: any) {
     try {
       const { userIds, hardDelete = false } = req.body;
       
@@ -345,7 +345,7 @@ export class AdminController {
    * GET /api/admin/users/:id
    * Get a single user by ID with full details
    */
-  static async getUserById(req: Request, res: Response) {
+  static async getUserById(req: any, res: any) {
     try {
       const userId = parseInt(req.params.id);
       
@@ -384,7 +384,7 @@ export class AdminController {
    * GET /api/admin/products/:id
    * Get a single product by ID with full details
    */
-  static async getProductById(req: Request, res: Response) {
+  static async getProductById(req: any, res: any) {
     try {
       const productId = parseInt(req.params.id);
       

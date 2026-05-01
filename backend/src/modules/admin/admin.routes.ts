@@ -8,9 +8,9 @@ const router = Router();
 // Apply security to all routes in this file
 router.use(authenticate, isAdmin);
 
-router.get("/stats", AdminController.getStats);
+router.get("/stats", AdminController.getSystemStats);
 router.get("/pending-products", AdminController.getPendingProducts);
 router.patch("/verify/:id", AdminController.verifyProduct);
-router.get("/users", AdminController.getUsers);
+router.get("/users", AdminController.getAllUsers);
 
 export default router;

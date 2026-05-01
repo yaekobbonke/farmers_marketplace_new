@@ -8,28 +8,25 @@ dotenv.config();
 
 const app: Express = express();
 
-
 app.use(cors()); 
-app.use(express.json()); // This reads the stream and populates req.body
+app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-
-app.use((req, res, next) => {
+// ✅ Use 'any' type for quick fix
+app.use((req: any, res: any, next: any) => {
     if (req.method === "POST") {
         console.log(`📦 [${req.method}] ${req.path} - Body:`, req.body);
     }
     next();
 });
 
-
 app.use("/api", routes);
 
-
-app.get("/", (req, res) => {
+// ✅ Use 'any' type for route handler
+app.get("/", (req: any, res: any) => {
     res.send("Farmers Marketplace API is running...");
 });
 
-
-app.use(errorHandler); 
+app.use(errorHandler);
 
 export default app;

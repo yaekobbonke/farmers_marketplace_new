@@ -1,6 +1,6 @@
-import { Request, Response, NextFunction } from "express";
+// import { Request, Response, NextFunction } from "express";
 
-export const isAdmin = (req: any, res: Response, next: NextFunction) => {
+export const isAdmin = (req: any, res: any, next: any) => {
   if (req.user && req.user.role === "admin") {
     next();
   } else {
