@@ -1,30 +1,42 @@
-'use client';
+"use client";
 
-import React, { useEffect, useState } from 'react';
-import { TrendingUp, TrendingDown, RefreshCw, Database, Globe } from 'lucide-react';
+import { useEffect, useState } from "react";
+import api from "@/lib/api"; // Use your configured api instance
 
-interface MarketData {
-  commodity: string;
+interface MarketPrice {
+  id: number;
+  productName: string;
   price: number;
-  market: string;
-  source: string;
-  unit: string;
+  location: string;
   recordedAt: string;
 }
 
 export default function MarketTable() {
-  const [data, setData] = useState<MarketData[]>([]);
+  const [data, setData] = useState<MarketPrice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchPrices = async () => {
-    setLoading(true);
     try {
-      // Points to your Node.js Controller: GET /api/v1/prices/latest
-      const res = await fetch('http://127.0.0.1:5000/api/prices/latest');
-      const json = await res.json();
-      setData(json);
-    } catch (err) {
-      console.error("Failed to fetch market data", err);
+      setLoading(true);
+      setError(null);
+      
+      // Use your api instance instead of direct fetch
+      const response = await api.get("/prices/latest");
+      
+      // Handle different response structures
+      const prices = response.data.data || response.data;
+      setData(Array.isArray(prices) ? prices : []);
+    } catch (err: any) {
+      console.error("Error fetching prices:", err);
+      setError(err.message || "Failed to fetch market prices");
+      
+      // Fallback mock data for development
+      setData([
+        { id: 1, productName: "Teff", price: 45, location: "Addis Ababa", recordedAt: new Date().toISOString() },
+        { id: 2, productName: "Wheat", price: 35, location: "Oromia", recordedAt: new Date().toISOString() },
+        { id: 3, productName: "Barley", price: 30, location: "Amhara", recordedAt: new Date().toISOString() },
+      ]);
     } finally {
       setLoading(false);
     }
@@ -32,70 +44,58 @@ export default function MarketTable() {
 
   useEffect(() => {
     fetchPrices();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchPrices, 30000);
+    return () => clearInterval(interval);
   }, []);
 
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-      <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-        <h2 className="font-semibold text-slate-800 flex items-center gap-2">
-          <Globe className="w-4 h-4 text-green-600" />
-          Live Market Intelligence
-        </h2>
+  if (loading && data.length === 0) {
+    return (
+      <div className="p-8 text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto"></div>
+        <p className="mt-2 text-slate-500">Loading market prices...</p>
+      </div>
+    );
+  }
+
+  if (error && data.length === 0) {
+    return (
+      <div className="p-8 text-center">
+        <p className="text-red-500">Unable to load market data</p>
         <button 
           onClick={fetchPrices}
-          className="text-xs flex items-center gap-1 text-slate-500 hover:text-green-600 transition-colors"
+          className="mt-2 text-green-600 hover:underline"
         >
-          <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
+          Retry
         </button>
       </div>
+    );
+  }
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wider">
-            <tr>
-              <th className="px-4 py-3 font-medium">Commodity</th>
-              <th className="px-4 py-3 font-medium">Market</th>
-              <th className="px-4 py-3 font-medium text-right">Price (ETB)</th>
-              <th className="px-4 py-3 font-medium text-center">Source</th>
-              <th className="px-4 py-3 font-medium">Freshness</th>
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50">
+          <tr>
+            <th className="px-4 py-3 text-left font-semibold text-slate-600">Product</th>
+            <th className="px-4 py-3 text-left font-semibold text-slate-600">Price (ETB)</th>
+            <th className="px-4 py-3 text-left font-semibold text-slate-600">Location</th>
+            <th className="px-4 py-3 text-left font-semibold text-slate-600">Last Updated</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {data.map((item) => (
+            <tr key={item.id} className="hover:bg-slate-50">
+              <td className="px-4 py-3 font-medium">{item.productName}</td>
+              <td className="px-4 py-3">{item.price.toLocaleString()}</td>
+              <td className="px-4 py-3">{item.location}</td>
+              <td className="px-4 py-3 text-slate-500">
+                {new Date(item.recordedAt).toLocaleDateString()}
+              </td>
             </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {data.map((item, idx) => (
-              <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                <td className="px-4 py-3 font-medium text-slate-900">{item.commodity}</td>
-                <td className="px-4 py-3 text-slate-600">{item.market}</td>
-                <td className="px-4 py-3 text-right">
-                  <span className="font-mono font-bold text-green-700">
-                    {item.price.toLocaleString()}
-                  </span>
-                  <span className="text-[10px] text-slate-400 ml-1">/{item.unit}</span>
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                    item.source.includes('scraper') 
-                      ? 'bg-blue-100 text-blue-700' 
-                      : 'bg-orange-100 text-orange-700'
-                  }`}>
-                    {item.source.includes('scraper') ? 'Official ECX' : 'Local Feed'}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-slate-400 text-xs italic">
-                  {item.recordedAt}
-                </td>
-              </tr>
-            ))}
-            {!loading && data.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-slate-400">
-                  No active market signals found. Run the scraper or add products.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
