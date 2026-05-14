@@ -1,0 +1,3 @@
+export { default as categoryRoutes } from "./category.routes";
+export { CategoryController } from "./category.controller";
+export { CategoryService } from "./category.service";
