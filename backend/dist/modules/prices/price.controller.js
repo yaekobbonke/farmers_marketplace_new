@@ -5,7 +5,6 @@ const price_service_1 = require("./price.service");
 class PriceController {
     static async getPrediction(req, res) {
         try {
-            // ✅ Fixed: Type assertion for params.id
             const productId = parseInt(req.params.id);
             if (isNaN(productId)) {
                 return res.status(400).json({
@@ -29,10 +28,14 @@ class PriceController {
     }
     static async getLatestPrices(req, res) {
         try {
-            // ✅ Fixed: Handle query parameter properly
             const limit = req.query.limit ? parseInt(req.query.limit) : 15;
-            const result = await price_service_1.PriceService.getRecentMarketSnapshots(limit);
-            return res.status(200).json(result);
+            const validLimit = isNaN(limit) ? 15 : Math.min(limit, 100);
+            const result = await price_service_1.PriceService.getRecentMarketSnapshots(validLimit);
+            return res.status(200).json({
+                success: true,
+                data: result,
+                count: result.length
+            });
         }
         catch (error) {
             console.error("❌ Fetch Latest Prices Error:", error);
@@ -51,17 +54,25 @@ class PriceController {
                     message: "Unauthorized: Scraper access denied."
                 });
             }
+            if (!req.body || !req.body.name || !req.body.price) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid request body. Required fields: name, price"
+                });
+            }
             const result = await price_service_1.PriceService.processScrapedData(req.body);
             if (!result) {
                 return res.status(200).json({
                     success: true,
-                    message: "Scraped data ignored: Commodity name not mapped in local database."
+                    message: "Scraped data ignored: Commodity name not mapped in local database.",
+                    mapped: false
                 });
             }
             return res.status(201).json({
                 success: true,
                 message: "Market intelligence synced successfully",
-                data: result
+                data: result,
+                mapped: true
             });
         }
         catch (error) {

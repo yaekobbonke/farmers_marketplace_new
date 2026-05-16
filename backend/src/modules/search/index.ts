@@ -1,2 +1,2 @@
-import router from "./search.routes";
-export default router;
+import searchRoutes from "./search.routes";
+export default searchRoutes;

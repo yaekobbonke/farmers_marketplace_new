@@ -1,10 +1,19 @@
 import { Request, Response } from 'express';
 import { PriceService } from './price.service';
 
+// Define the expected return type
+interface MarketSnapshot {
+  commodity: string;
+  price: number;
+  market: string;
+  source: string;
+  unit: string;
+  recordedAt: string;
+}
+
 export class PriceController {
   static async getPrediction(req: Request, res: Response) {
     try {
-      // ✅ Fixed: Type assertion for params.id
       const productId = parseInt(req.params.id as string);
       
       if (isNaN(productId)) {
@@ -31,10 +40,16 @@ export class PriceController {
 
   static async getLatestPrices(req: Request, res: Response) {
     try {
-      // ✅ Fixed: Handle query parameter properly
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 15;
-      const result = await PriceService.getRecentMarketSnapshots(limit);
-      return res.status(200).json(result);
+      const validLimit = isNaN(limit) ? 15 : Math.min(limit, 100);
+      
+      const result: MarketSnapshot[] = await PriceService.getRecentMarketSnapshots(validLimit);
+      
+      return res.status(200).json({
+        success: true,
+        data: result,
+        count: result.length
+      });
     } catch (error) {
       console.error("❌ Fetch Latest Prices Error:", error);
       return res.status(500).json({
@@ -47,10 +62,18 @@ export class PriceController {
   static async syncScrapedData(req: Request, res: Response) {
     try {
       const internalSecret = req.headers['x-internal-secret'];
+      
       if (!internalSecret || internalSecret !== process.env.INTERNAL_SECRET) {
         return res.status(401).json({ 
           success: false, 
           message: "Unauthorized: Scraper access denied." 
+        });
+      }
+
+      if (!req.body || !req.body.name || !req.body.price) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid request body. Required fields: name, price"
         });
       }
 
@@ -59,14 +82,16 @@ export class PriceController {
       if (!result) {
         return res.status(200).json({ 
           success: true, 
-          message: "Scraped data ignored: Commodity name not mapped in local database." 
+          message: "Scraped data ignored: Commodity name not mapped in local database.",
+          mapped: false
         });
       }
 
       return res.status(201).json({
         success: true,
         message: "Market intelligence synced successfully",
-        data: result
+        data: result,
+        mapped: true
       });
     } catch (error: any) {
       console.error("❌ Scraper Sync Error:", error.message);

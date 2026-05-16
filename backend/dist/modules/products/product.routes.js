@@ -2,28 +2,35 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const product_controller_1 = require("./product.controller");
-const auth_middleware_1 = require("../auth/auth.middleware");
+const authMiddleware_1 = require("../../middleware/authMiddleware");
 const router = (0, express_1.Router)();
 /**
  * PUBLIC ROUTES
- * Farmers and Buyers can view products and market insights.
  */
 router.get("/", product_controller_1.ProductController.getAll);
+router.get("/search", product_controller_1.ProductController.searchProducts);
+router.get("/featured", product_controller_1.ProductController.getFeaturedProducts);
+router.get("/category/:categoryId", product_controller_1.ProductController.getProductsByCategory);
 router.get("/:id", product_controller_1.ProductController.getById);
 /**
- * PROTECTED ROUTES (FARMER/ADMIN ONLY)
- * Operations that modify the marketplace catalog.
+ * PROTECTED ROUTES (AUTHENTICATED USERS)
  */
-// Create a new listing
-router.post("/", auth_middleware_1.authenticate, (0, auth_middleware_1.requireRole)("FARMER", "ADMIN"), product_controller_1.ProductController.create);
-// Update an existing listing (Using PATCH for partial updates)
-router.patch("/:id", auth_middleware_1.authenticate, (0, auth_middleware_1.requireRole)("FARMER", "ADMIN"), product_controller_1.ProductController.update);
-// Remove a listing
-router.delete("/:id", auth_middleware_1.authenticate, (0, auth_middleware_1.requireRole)("FARMER", "ADMIN"), product_controller_1.ProductController.remove);
+router.use(authMiddleware_1.authenticate);
+// Farmer specific routes
+router.get("/farmer/products", product_controller_1.ProductController.getFarmerProducts);
+router.get("/farmer/stats", product_controller_1.ProductController.getFarmerStats);
+router.get("/farmer/low-stock", product_controller_1.ProductController.getLowStockProducts);
+// Product stock update
+router.patch("/:id/stock", product_controller_1.ProductController.updateStock);
+// Product CRUD
+router.post("/", (0, authMiddleware_1.requireRole)("FARMER", "ADMIN"), product_controller_1.ProductController.create);
+router.patch("/:id", (0, authMiddleware_1.requireRole)("FARMER", "ADMIN"), product_controller_1.ProductController.update);
+router.delete("/:id", (0, authMiddleware_1.requireRole)("FARMER", "ADMIN"), product_controller_1.ProductController.remove);
 /**
- * NOTE:
- * AI Prediction and Market Data routes are currently in price.route.ts.
- * Ensure your frontend calls:
- 
+ * ADMIN ONLY ROUTES
  */
+router.get("/admin/all", (0, authMiddleware_1.requireRole)("ADMIN"), product_controller_1.ProductController.getAllProductsAdmin);
+router.patch("/admin/:id/verify", (0, authMiddleware_1.requireRole)("ADMIN"), product_controller_1.ProductController.verifyProduct);
+router.patch("/admin/:id/feature", (0, authMiddleware_1.requireRole)("ADMIN"), product_controller_1.ProductController.featureProduct);
+router.delete("/admin/:id/reject", (0, authMiddleware_1.requireRole)("ADMIN"), product_controller_1.ProductController.rejectProduct); // ✅ Add reject product route
 exports.default = router;

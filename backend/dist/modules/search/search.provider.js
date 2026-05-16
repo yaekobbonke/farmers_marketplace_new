@@ -7,10 +7,21 @@ exports.SearchProvider = void 0;
 const axios_1 = __importDefault(require("axios"));
 class SearchProvider {
     static async semanticSearch(query) {
-        const res = await axios_1.default.post("http://ai-search:7000/search", {
-            query
-        });
-        return res.data.results;
+        try {
+            const res = await axios_1.default.post("http://ai-search:8000/search", {
+                query
+            });
+            return res.data.results;
+        }
+        catch (error) {
+            console.error("❌ Semantic search failed:", error);
+            // Fallback to database search
+            return null;
+        }
+    }
+    static async getRecommendations(userId, limit = 6) {
+        // This will be handled by the service with database fallback
+        return null;
     }
 }
 exports.SearchProvider = SearchProvider;

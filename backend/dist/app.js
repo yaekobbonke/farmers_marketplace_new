@@ -11,8 +11,9 @@ const errorHandler_1 = require("./middleware/errorHandler");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)());
-app.use(express_1.default.json()); // This reads the stream and populates req.body
+app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
+// ✅ Use 'any' type for quick fix
 app.use((req, res, next) => {
     if (req.method === "POST") {
         console.log(`📦 [${req.method}] ${req.path} - Body:`, req.body);
@@ -20,6 +21,7 @@ app.use((req, res, next) => {
     next();
 });
 app.use("/api", routes_1.default);
+// ✅ Use 'any' type for route handler
 app.get("/", (req, res) => {
     res.send("Farmers Marketplace API is running...");
 });

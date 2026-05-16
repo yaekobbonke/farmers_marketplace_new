@@ -1,4 +1,5 @@
 "use strict";
+// import { Request, Response, NextFunction } from "express";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isAdmin = void 0;
 const isAdmin = (req, res, next) => {

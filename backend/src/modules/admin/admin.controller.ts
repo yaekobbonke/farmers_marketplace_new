@@ -1,421 +1,242 @@
-//import { Request, Response } from "express";
+import { Request, Response } from "express";
 import { AdminService } from "./admin.service";
+import { ProductService } from "../products/product.service";
 
 export class AdminController {
-  /**
-   * GET /api/admin/stats
-   * Get system statistics (user count, product count, revenue)
-   */
-  static async getSystemStats(req: any, res: any) {
+  static async getStats(req: Request, res: Response) {
     try {
-      const stats = await AdminService.getSystemStats();
-      
-      return res.status(200).json({
-        success: true,
-        data: stats
-      });
+      const stats = await AdminService.getStats();
+      res.json({ success: true, data: stats });
     } catch (error: any) {
-      console.error("Error fetching system stats:", error);
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to fetch system statistics"
-      });
+      console.error("Error fetching stats:", error);
+      res.status(500).json({ success: false, message: error.message });
     }
   }
 
-  /**
-   * GET /api/admin/products/pending
-   * Get all products awaiting verification
-   */
-  static async getPendingProducts(req: any, res: any) {
+  static async getAllUsers(req: Request, res: Response) {
     try {
-      const products = await AdminService.getPendingProducts();
-      
-      return res.status(200).json({
-        success: true,
-        data: products,
-        count: products.length
-      });
+      const users = await AdminService.getAllUsers();
+      res.json({ success: true, data: users });
     } catch (error: any) {
-      console.error("Error fetching pending products:", error);
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to fetch pending products"
-      });
+      console.error("Error fetching users:", error);
+      res.status(500).json({ success: false, message: error.message });
     }
   }
 
-  /**
-   * PUT /api/admin/products/:id/verify
-   * Verify a product (approve it for marketplace)
-   */
-  static async verifyProduct(req: any, res: any) {
+  static async updateUserRole(req: Request, res: Response) {
     try {
-      const productId = parseInt(req.params.id);
+      const userId = parseInt(req.params.userId);
+      const { role } = req.body;
       
-      if (isNaN(productId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid product ID"
+      if (!role || !["ADMIN", "FARMER", "BUYER"].includes(role)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Invalid role. Must be ADMIN, FARMER, or BUYER" 
         });
       }
-
-      const product = await AdminService.verifyProduct(productId);
       
-      return res.status(200).json({
-        success: true,
-        message: "Product verified successfully",
-        data: product
+      const updated = await AdminService.updateUserRole(userId, role);
+      res.json({ 
+        success: true, 
+        data: updated,
+        message: `User role updated to ${role} successfully`
+      });
+    } catch (error: any) {
+      console.error("❌ Update role error:", error.message);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  static async toggleSuspendUser(req: Request, res: Response) {
+    try {
+      const userId = parseInt(req.params.userId);
+      const { isSuspended } = req.body;
+      
+      if (isSuspended === undefined) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "isSuspended field is required" 
+        });
+      }
+      
+      const updated = await AdminService.toggleSuspendUser(userId, isSuspended);
+      res.json({ 
+        success: true, 
+        data: updated,
+        message: isSuspended ? "User suspended successfully" : "User unsuspended successfully"
+      });
+    } catch (error: any) {
+      console.error("Error toggling user suspension:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  static async suspendUser(req: Request, res: Response) {
+    try {
+      const userId = parseInt(req.params.userId);
+      const updated = await AdminService.suspendUser(userId);
+      res.json({ success: true, data: updated, message: "User suspended successfully" });
+    } catch (error: any) {
+      console.error("Error suspending user:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  static async unsuspendUser(req: Request, res: Response) {
+    try {
+      const userId = parseInt(req.params.userId);
+      const updated = await AdminService.unsuspendUser(userId);
+      res.json({ success: true, data: updated, message: "User unsuspended successfully" });
+    } catch (error: any) {
+      console.error("Error unsuspending user:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  static async deleteUser(req: Request, res: Response) {
+    try {
+      const userId = parseInt(req.params.userId);
+      
+      const currentAdminId = req.user?.id;
+      if (currentAdminId === userId) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "You cannot delete your own account. Use account settings instead." 
+        });
+      }
+      
+      const deleted = await AdminService.deleteUser(userId);
+      res.json({ 
+        success: true, 
+        data: deleted,
+        message: `User ${deleted.first_name} ${deleted.last_name} has been deleted successfully`
+      });
+    } catch (error: any) {
+      console.error("❌ Delete user error:", error.message);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  static async getRecentActivity(req: Request, res: Response) {
+    try {
+      const activity = await AdminService.getRecentActivity();
+      res.json({ success: true, data: activity });
+    } catch (error: any) {
+      console.error("❌ Error fetching recent activity:", error.message);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  static async getSalesData(req: Request, res: Response) {
+    try {
+      const { range } = req.query;
+      const validRange = range === "week" || range === "year" ? range : "month";
+      
+      const salesData = await AdminService.getSalesData(validRange);
+      
+      res.json({ 
+        success: true, 
+        data: salesData.data,
+        summary: salesData.summary
+      });
+    } catch (error: any) {
+      console.error("❌ Error fetching sales data:", error.message);
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || "Failed to fetch sales data" 
+      });
+    }
+  }
+
+  // Get all products for admin - This stays with AdminService
+  static async getAllProducts(req: Request, res: Response) {
+    try {
+      const products = await AdminService.getAllProducts();
+      res.json({ success: true, data: products });
+    } catch (error: any) {
+      console.error("Error fetching products:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  // ✅ Verify a product - Using ProductService (has duplicate prevention)
+  static async verifyProduct(req: Request, res: Response) {
+    try {
+      const productId = parseInt(req.params.productId);
+      
+      if (isNaN(productId)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Invalid product ID" 
+        });
+      }
+      
+      console.log(`🔍 Admin verifying product: ${productId}`);
+      
+      const product = await ProductService.verifyProduct(productId);
+      
+      res.json({ 
+        success: true, 
+        data: product,
+        message: "Product verified successfully. Farmer has been notified." 
       });
     } catch (error: any) {
       console.error("Error verifying product:", error);
-      
-      if (error.message?.includes("not found")) {
-        return res.status(404).json({
-          success: false,
-          message: "Product not found"
-        });
-      }
-      
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to verify product"
-      });
+      res.status(500).json({ success: false, message: error.message });
     }
   }
 
-  /**
-   * PATCH /api/admin/users/:id/suspend
-   * Toggle user suspension status
-   */
-  static async toggleUserStatus(req: any, res: any) {
+  // ✅ Feature a product - Using ProductService (has duplicate prevention)
+  static async featureProduct(req: Request, res: Response) {
     try {
-      const userId = parseInt(req.params.id);
-      const { isSuspended } = req.body;
-      
-      if (isNaN(userId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid user ID"
-        });
-      }
-      
-      if (typeof isSuspended !== 'boolean') {
-        return res.status(400).json({
-          success: false,
-          message: "isSuspended must be a boolean value"
-        });
-      }
-
-      const user = await AdminService.toggleUserStatus(userId, isSuspended);
-      
-      return res.status(200).json({
-        success: true,
-        message: `User ${isSuspended ? 'suspended' : 'activated'} successfully`,
-        data: user
-      });
-    } catch (error: any) {
-      console.error("Error toggling user status:", error);
-      
-      if (error.message?.includes("not found")) {
-        return res.status(404).json({
-          success: false,
-          message: "User not found"
-        });
-      }
-      
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to update user status"
-      });
-    }
-  }
-
-  /**
-   * GET /api/admin/users
-   * Get all users with their activity counts
-   */
-  static async getAllUsers(req: any, res: any) {
-    try {
-      const users = await AdminService.getAllUsers();
-      
-      return res.status(200).json({
-        success: true,
-        data: users,
-        count: users.length
-      });
-    } catch (error: any) {
-      console.error("Error fetching users:", error);
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to fetch users"
-      });
-    }
-  }
-
-  /**
-   * DELETE /api/admin/products/:id
-   * Delete a single product
-   */
-  static async deleteProduct(req: any, res: any) {
-    try {
-      const productId = parseInt(req.params.id);
+      const productId = parseInt(req.params.productId);
       
       if (isNaN(productId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid product ID. Please provide a valid number."
-        });
-      }
-
-      const result = await AdminService.deleteProduct(productId);
-      
-      return res.status(200).json(result);
-    } catch (error: any) {
-      console.error("Delete product error:", error);
-      
-      if (error.message === "Product not found") {
-        return res.status(404).json({
-          success: false,
-          message: error.message
+        return res.status(400).json({ 
+          success: false, 
+          message: "Invalid product ID" 
         });
       }
       
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to delete product"
+      console.log(`🌟 Admin featuring product: ${productId}`);
+      
+      const product = await ProductService.featureProduct(productId);
+      
+      res.json({ 
+        success: true, 
+        data: product,
+        message: "Product featured successfully. Farmer has been notified." 
       });
+    } catch (error: any) {
+      console.error("Error featuring product:", error);
+      res.status(500).json({ success: false, message: error.message });
     }
   }
 
-  /**
-   * DELETE /api/admin/users/:id
-   * Delete a single user (soft delete by default, use ?hard=true for permanent)
-   */
-  static async deleteUser(req: any, res: any) {
+  // ✅ Delete a product - Using ProductService (has duplicate prevention)
+  static async deleteProduct(req: Request, res: Response) {
     try {
-      const userId = parseInt(req.params.id);
-      const hardDelete = req.query.hard === 'true';
-      
-      if (isNaN(userId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid user ID. Please provide a valid number."
-        });
-      }
-
-      const result = await AdminService.deleteUser(userId, hardDelete);
-      
-      return res.status(200).json(result);
-    } catch (error: any) {
-      console.error("Delete user error:", error);
-      
-      if (error.message === "User not found") {
-        return res.status(404).json({
-          success: false,
-          message: error.message
-        });
-      }
-      
-      if (error.message.includes("Cannot delete")) {
-        return res.status(403).json({
-          success: false,
-          message: error.message
-        });
-      }
-      
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to delete user"
-      });
-    }
-  }
-
-  /**
-   * POST /api/admin/products/bulk-delete
-   * Delete multiple products at once
-   * Body: { productIds: [1, 2, 3] }
-   */
-  static async bulkDeleteProducts(req: any, res: any) {
-    try {
-      const { productIds } = req.body;
-      
-      if (!productIds) {
-        return res.status(400).json({
-          success: false,
-          message: "Missing productIds in request body"
-        });
-      }
-      
-      if (!Array.isArray(productIds)) {
-        return res.status(400).json({
-          success: false,
-          message: "productIds must be an array of numbers"
-        });
-      }
-      
-      if (productIds.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "productIds array cannot be empty"
-        });
-      }
-      
-      // Validate all IDs are numbers
-      const validIds = productIds.every(id => typeof id === 'number' && !isNaN(id));
-      if (!validIds) {
-        return res.status(400).json({
-          success: false,
-          message: "All product IDs must be valid numbers"
-        });
-      }
-
-      const result = await AdminService.bulkDeleteProducts(productIds);
-      
-      return res.status(200).json(result);
-    } catch (error: any) {
-      console.error("Bulk delete products error:", error);
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to delete products"
-      });
-    }
-  }
-
-  /**
-   * POST /api/admin/users/bulk-delete
-   * Delete multiple users at once
-   * Body: { userIds: [1, 2, 3], hardDelete: false }
-   */
-  static async bulkDeleteUsers(req: any, res: any) {
-    try {
-      const { userIds, hardDelete = false } = req.body;
-      
-      if (!userIds) {
-        return res.status(400).json({
-          success: false,
-          message: "Missing userIds in request body"
-        });
-      }
-      
-      if (!Array.isArray(userIds)) {
-        return res.status(400).json({
-          success: false,
-          message: "userIds must be an array of numbers"
-        });
-      }
-      
-      if (userIds.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "userIds array cannot be empty"
-        });
-      }
-      
-      // Validate all IDs are numbers
-      const validIds = userIds.every(id => typeof id === 'number' && !isNaN(id));
-      if (!validIds) {
-        return res.status(400).json({
-          success: false,
-          message: "All user IDs must be valid numbers"
-        });
-      }
-
-      const result = await AdminService.bulkDeleteUsers(userIds, hardDelete);
-      
-      return res.status(200).json(result);
-    } catch (error: any) {
-      console.error("Bulk delete users error:", error);
-      
-      if (error.message.includes("Cannot delete all admin users")) {
-        return res.status(403).json({
-          success: false,
-          message: error.message
-        });
-      }
-      
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to delete users"
-      });
-    }
-  }
-
-  /**
-   * GET /api/admin/users/:id
-   * Get a single user by ID with full details
-   */
-  static async getUserById(req: any, res: any) {
-    try {
-      const userId = parseInt(req.params.id);
-      
-      if (isNaN(userId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid user ID"
-        });
-      }
-
-      // ✅ Call AdminService instead of using prisma directly
-      const user = await AdminService.getUserById(userId);
-      
-      return res.status(200).json({
-        success: true,
-        data: user
-      });
-    } catch (error: any) {
-      console.error("Error fetching user:", error);
-      
-      if (error.message === "User not found") {
-        return res.status(404).json({
-          success: false,
-          message: error.message
-        });
-      }
-      
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to fetch user"
-      });
-    }
-  }
-
-  /**
-   * GET /api/admin/products/:id
-   * Get a single product by ID with full details
-   */
-  static async getProductById(req: any, res: any) {
-    try {
-      const productId = parseInt(req.params.id);
+      const productId = parseInt(req.params.productId);
+      const adminId = req.user?.id;
       
       if (isNaN(productId)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid product ID"
+        return res.status(400).json({ 
+          success: false, 
+          message: "Invalid product ID" 
         });
       }
-
-      // ✅ Call AdminService instead of using prisma directly
-      const product = await AdminService.getProductById(productId);
       
-      return res.status(200).json({
-        success: true,
-        data: product
+      console.log(`🗑️ Admin deleting product: ${productId}`);
+      
+      await ProductService.remove(productId, adminId, "ADMIN");
+      
+      res.json({ 
+        success: true, 
+        message: "Product deleted successfully. Farmer has been notified." 
       });
     } catch (error: any) {
-      console.error("Error fetching product:", error);
-      
-      if (error.message === "Product not found") {
-        return res.status(404).json({
-          success: false,
-          message: error.message
-        });
-      }
-      
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Failed to fetch product"
-      });
+      console.error("Error deleting product:", error);
+      res.status(500).json({ success: false, message: error.message });
     }
   }
 }

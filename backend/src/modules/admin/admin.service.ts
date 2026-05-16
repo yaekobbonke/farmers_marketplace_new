@@ -1,83 +1,58 @@
 import prisma from "../../config/prisma";
+import { formatTimeAgo } from "../../utils/dateUtils";
 
 export class AdminService {
-  /**
-   * Get system statistics (user count, product count, revenue)
-   */
-  static async getSystemStats() {
-    const [userCount, productCount, totalRevenue] = await Promise.all([
+  static async getStats() {
+    const [totalUsers, totalProducts, totalOrders, totalRevenue] = await Promise.all([
       prisma.user.count(),
       prisma.product.count(),
+      prisma.order.count(),
       prisma.order.aggregate({
         _sum: { totalAmount: true },
-      }),
+        where: { status: "COMPLETED" }
+      })
     ]);
 
+    // Get additional stats
+    const [activeProducts, pendingProducts, completedOrders, pendingOrders, monthlyRevenue] = await Promise.all([
+      prisma.product.count({ where: { status: "AVAILABLE" } }),
+      prisma.product.count({ where: { is_verified: false } }),
+      prisma.order.count({ where: { status: "COMPLETED" } }),
+      prisma.order.count({ where: { status: "PENDING" } }),
+      prisma.order.aggregate({
+        _sum: { totalAmount: true },
+        where: {
+          status: "COMPLETED",
+          createdAt: {
+            gte: new Date(new Date().setMonth(new Date().getMonth() - 1))
+          }
+        }
+      })
+    ]);
+
+    // Calculate growth percentages (mock - you can implement actual calculations)
+    const revenueChange = 12.5; // Example: 12.5% increase
+    const userGrowth = 8.3;
+    const orderGrowth = 15.2;
+    const productGrowth = 5.7;
+
     return {
-      userCount,
-      productCount,
-      revenue: totalRevenue._sum?.totalAmount || 0,
+      totalUsers,
+      totalProducts,
+      totalOrders,
+      totalRevenue: totalRevenue._sum.totalAmount || 0,
+      pendingProducts,
+      activeProducts,
+      completedOrders,
+      pendingOrders,
+      monthlyRevenue: monthlyRevenue._sum.totalAmount || 0,
+      revenueChange,
+      userGrowth,
+      orderGrowth,
+      productGrowth
     };
   }
 
-  /**
-   * Get all products awaiting verification
-   */
-  static async getPendingProducts() {
-    return prisma.product.findMany({
-      where: { is_verified: false },
-      include: { 
-        farmer: {
-          select: { 
-            first_name: true,
-            last_name: true,
-            email: true 
-          } 
-        } 
-      },
-      orderBy: { createdAt: "desc" },
-    });
-  }
-
-  /**
-   * Verify a product (approve it for marketplace)
-   */
-  static async verifyProduct(id: number) {
-    const product = await prisma.product.findUnique({
-      where: { id }
-    });
-
-    if (!product) {
-      throw new Error("Product not found");
-    }
-
-    return prisma.product.update({
-      where: { id },
-      data: { is_verified: true },
-    });
-  }
-
-  /**
-   * Toggle user suspension status
-   */
-  static async toggleUserStatus(id: number, isSuspended: boolean) {
-    const user = await prisma.user.findUnique({
-      where: { id }
-    });
-
-    if (!user) {
-      throw new Error("User not found");
-    }
-
-    return prisma.user.update({
-      where: { id },
-      data: { is_suspended: isSuspended },
-    });
-  }
-
-  /**
-   * Get all users with their activity counts
-   */
   static async getAllUsers() {
     return prisma.user.findMany({
       select: {
@@ -85,232 +60,42 @@ export class AdminService {
         first_name: true,
         last_name: true,
         email: true,
+        phone: true,
         role: true,
+        isActive: true,
         is_suspended: true,
         createdAt: true,
         _count: {
-          select: { products: true, orders: true }
+          select: {
+            products: true,
+            orders: true
+          }
         }
       },
       orderBy: { createdAt: 'desc' }
     });
   }
 
-  /**
-   * Delete a single product
-   */
-  static async deleteProduct(productId: number) {
-    try {
-      // Check if product exists
-      const product = await prisma.product.findUnique({
-        where: { id: productId },
-        include: {
-          farmer: {
-            select: {
-              id: true,
-              first_name: true,
-              last_name: true,
-              email: true
-            }
-          }
-        }
+  static async updateUserRole(userId: number, role: string) {
+    // Prevent demoting the last admin
+    if (role !== "ADMIN") {
+      const adminCount = await prisma.user.count({
+        where: { role: "ADMIN" }
       });
-
-      if (!product) {
-        throw new Error("Product not found");
-      }
-
-      // Delete the product
-      const deletedProduct = await prisma.product.delete({
-        where: { id: productId }
-      });
-
-      return {
-        success: true,
-        message: `Product "${product.name}" has been deleted successfully`,
-        data: {
-          id: deletedProduct.id,
-          name: deletedProduct.name,
-          price: deletedProduct.price,
-          farmer: product.farmer,
-          deletedAt: new Date().toISOString()
-        }
-      };
-    } catch (error: any) {
-      console.error("Error deleting product:", error);
       
-      if (error.code === "P2003") {
-        throw new Error("Cannot delete product because it has existing orders. Consider marking as inactive instead.");
-      }
-      
-      throw new Error(error.message || "Failed to delete product");
-    }
-  }
-
-  /**
-   * Delete a single user (soft delete by default, use hardDelete for permanent)
-   */
-  static async deleteUser(userId: number, hardDelete: boolean = false) {
-    try {
-      // Check if user exists
-      const user = await prisma.user.findUnique({
+      const targetUser = await prisma.user.findUnique({
         where: { id: userId },
-        include: {
-          _count: {
-            select: { products: true, orders: true }
-          }
-        }
+        select: { role: true }
       });
-
-      if (!user) {
-        throw new Error("User not found");
-      }
-
-      // Prevent deleting the last admin
-      if (user.role === "ADMIN") {
-        const adminCount = await prisma.user.count({
-          where: { role: "ADMIN" }
-        });
-        
-        if (adminCount === 1) {
-          throw new Error("Cannot delete the only admin user");
-        }
-      }
-
-      let result;
       
-      if (hardDelete) {
-        // Hard delete: Remove user and all related data
-        result = await prisma.user.delete({
-          where: { id: userId }
-        });
-        
-        return {
-          success: true,
-          message: `User "${user.email}" has been permanently deleted`,
-          data: {
-            ...result,
-            deletedProducts: user._count.products,
-            deletedOrders: user._count.orders
-          }
-        };
-      } else {
-        // Soft delete: Just mark as suspended
-        result = await prisma.user.update({
-          where: { id: userId },
-          data: { is_suspended: true }
-        });
-        
-        return {
-          success: true,
-          message: `User "${user.email}" has been suspended`,
-          data: result
-        };
+      if (targetUser?.role === "ADMIN" && adminCount === 1) {
+        throw new Error("Cannot change role of the last admin");
       }
-    } catch (error: any) {
-      console.error("Error deleting user:", error);
-      throw new Error(error.message || "Failed to delete user");
     }
-  }
-
-  /**
-   * Delete multiple products at once
-   */
-  static async bulkDeleteProducts(productIds: number[]) {
-    try {
-      // First, check which products exist
-      const existingProducts = await prisma.product.findMany({
-        where: {
-          id: { in: productIds }
-        },
-        select: {
-          id: true,
-          name: true
-        }
-      });
-
-      const existingIds = existingProducts.map(p => p.id);
-      const missingIds = productIds.filter(id => !existingIds.includes(id));
-
-      if (existingIds.length === 0) {
-        throw new Error("No valid products found to delete");
-      }
-
-      // Delete existing products
-      const deleted = await prisma.product.deleteMany({
-        where: {
-          id: { in: existingIds }
-        }
-      });
-
-      return {
-        success: true,
-        message: `${deleted.count} product(s) deleted successfully`,
-        data: {
-          deletedCount: deleted.count,
-          deletedProducts: existingProducts,
-          missingIds: missingIds,
-          missingCount: missingIds.length
-        }
-      };
-    } catch (error: any) {
-      console.error("Error bulk deleting products:", error);
-      throw new Error(error.message || "Failed to delete products");
-    }
-  }
-
-  /**
-   * Delete multiple users at once
-   */
-  static async bulkDeleteUsers(userIds: number[], hardDelete: boolean = false) {
-    try {
-      // Prevent deleting all admins
-      const adminUsers = await prisma.user.findMany({
-        where: {
-          id: { in: userIds },
-          role: "ADMIN"
-        }
-      });
-
-      const adminCount = await prisma.user.count({ where: { role: "ADMIN" } });
-      
-      if (adminUsers.length === adminCount && adminCount > 0) {
-        throw new Error("Cannot delete all admin users");
-      }
-
-      let deleted;
-      if (hardDelete) {
-        deleted = await prisma.user.deleteMany({
-          where: {
-            id: { in: userIds }
-          }
-        });
-      } else {
-        deleted = await prisma.user.updateMany({
-          where: {
-            id: { in: userIds }
-          },
-          data: { is_suspended: true }
-        });
-      }
-
-      return {
-        success: true,
-        message: `${deleted.count} user(s) processed successfully`,
-        count: deleted.count
-      };
-    } catch (error: any) {
-      console.error("Error bulk deleting users:", error);
-      throw new Error(error.message || "Failed to delete users");
-    }
-  }
-
-  /**
-   * Get a single user by ID with full details
-   */
-  static async getUserById(userId: number) {
-    const user = await prisma.user.findUnique({
+    
+    return prisma.user.update({
       where: { id: userId },
+      data: { role: role as any },
       select: {
         id: true,
         first_name: true,
@@ -318,52 +103,314 @@ export class AdminService {
         email: true,
         role: true,
         is_suspended: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: {
-          select: {
-            products: true,
-            orders: true
-          }
-        }
+        isActive: true
       }
     });
-
-    if (!user) {
-      throw new Error("User not found");
-    }
-
-    return user;
   }
 
-  /**
-   * Get a single product by ID with full details including farmer info
-   */
-  static async getProductById(productId: number) {
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
+  static async toggleSuspendUser(userId: number, isSuspended: boolean) {
+    return prisma.user.update({
+      where: { id: userId },
+      data: { 
+        is_suspended: isSuspended,
+        isActive: !isSuspended
+      },
+      select: {
+        id: true,
+        first_name: true,
+        last_name: true,
+        email: true,
+        is_suspended: true,
+        isActive: true,
+        role: true
+      }
+    });
+  }
+
+  static async suspendUser(userId: number) {
+    return prisma.user.update({
+      where: { id: userId },
+      data: { is_suspended: true, isActive: false }
+    });
+  }
+
+  static async unsuspendUser(userId: number) {
+    return prisma.user.update({
+      where: { id: userId },
+      data: { is_suspended: false, isActive: true }
+    });
+  }
+
+  static async deleteUser(userId: number) {
+    // Prevent deleting the last admin
+    const targetUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true }
+    });
+    
+    if (targetUser?.role === "ADMIN") {
+      const adminCount = await prisma.user.count({
+        where: { role: "ADMIN" }
+      });
+      
+      if (adminCount === 1) {
+        throw new Error("Cannot delete the last admin user");
+      }
+    }
+    
+    return prisma.user.delete({
+      where: { id: userId },
+      select: {
+        id: true,
+        first_name: true,
+        last_name: true,
+        email: true,
+        role: true
+      }
+    });
+  }
+
+  // ✅ Add getRecentActivity method
+  static async getRecentActivity() {
+    try {
+      // Fetch recent users
+      const recentUsers = await prisma.user.findMany({
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          first_name: true,
+          last_name: true,
+          createdAt: true
+        }
+      });
+      
+      // Fetch recent products
+      const recentProducts = await prisma.product.findMany({
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        include: { 
+          farmer: {
+            select: {
+              first_name: true,
+              last_name: true
+            }
+          }
+        }
+      });
+      
+      // Fetch recent orders
+      const recentOrders = await prisma.order.findMany({
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        include: { 
+          buyer: {
+            select: {
+              first_name: true,
+              last_name: true
+            }
+          }
+        }
+      });
+      
+      // Combine and format activities
+      const activity = [
+        ...recentUsers.map(u => ({
+          id: u.id,
+          type: "user" as const,
+          action: "New user registered",
+          user: `${u.first_name} ${u.last_name}`,
+          time: formatTimeAgo(u.createdAt),
+          timestamp: u.createdAt
+        })),
+        ...recentProducts.map(p => ({
+          id: p.id,
+          type: "product" as const,
+          action: "New product listed",
+          user: p.farmer ? `${p.farmer.first_name} ${p.farmer.last_name}` : "Unknown farmer",
+          time: formatTimeAgo(p.createdAt),
+          timestamp: p.createdAt,
+          status: p.is_verified ? "verified" : "pending"
+        })),
+        ...recentOrders.map(o => ({
+          id: o.id,
+          type: "order" as const,
+          action: `Order ${o.status.toLowerCase()}`,
+          user: o.buyer ? `${o.buyer.first_name} ${o.buyer.last_name}` : "Unknown buyer",
+          time: formatTimeAgo(o.createdAt),
+          timestamp: o.createdAt,
+          status: o.status.toLowerCase()
+        }))
+      ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 10);
+      
+      return activity;
+    } catch (error: any) {
+      console.error("Error fetching recent activity:", error);
+      throw new Error("Failed to fetch recent activity");
+    }
+  }
+
+
+  // ✅ Add getSalesData method
+  static async getSalesData(range: "week" | "month" | "year" = "month") {
+    try {
+      const days = range === "week" ? 7 : range === "year" ? 365 : 30;
+      
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      startDate.setHours(0, 0, 0, 0);
+      
+      // Fetch all completed orders within the date range
+      const orders = await prisma.order.findMany({
+        where: {
+          createdAt: { gte: startDate },
+          status: "COMPLETED"
+        },
+        select: {
+          createdAt: true,
+          totalAmount: true,
+          id: true
+        },
+        orderBy: { createdAt: 'asc' }
+      });
+      
+      // Group orders by date
+      const ordersByDate = new Map<string, { orders: number; revenue: number }>();
+      
+      // Initialize all dates in range
+      for (let i = 0; i < days; i++) {
+        const date = new Date(startDate);
+        date.setDate(date.getDate() + i);
+        const dateKey = date.toISOString().split('T')[0];
+        ordersByDate.set(dateKey, { orders: 0, revenue: 0 });
+      }
+      
+      // Aggregate orders by date
+      orders.forEach(order => {
+        const dateKey = order.createdAt.toISOString().split('T')[0];
+        const existing = ordersByDate.get(dateKey);
+        if (existing) {
+          existing.orders += 1;
+          existing.revenue += Number(order.totalAmount);
+          ordersByDate.set(dateKey, existing);
+        }
+      });
+      
+      // Format sales data for response
+      const salesData = [];
+      for (let i = 0; i < days; i++) {
+        const date = new Date(startDate);
+        date.setDate(date.getDate() + i);
+        const dateKey = date.toISOString().split('T')[0];
+        const data = ordersByDate.get(dateKey) || { orders: 0, revenue: 0 };
+        
+        let formattedDate: string;
+        if (range === "year") {
+          formattedDate = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        } else if (range === "week") {
+          formattedDate = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        } else {
+          formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+        
+        salesData.push({
+          date: formattedDate,
+          dateKey: dateKey,
+          orders: data.orders,
+          revenue: data.revenue
+        });
+      }
+      
+      // Calculate summary statistics
+      const totalOrders = salesData.reduce((sum, d) => sum + d.orders, 0);
+      const totalRevenue = salesData.reduce((sum, d) => sum + d.revenue, 0);
+      const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+      const peakDay = salesData.reduce((max, d) => d.revenue > max.revenue ? d : max, salesData[0]);
+      
+      return {
+        data: salesData,
+        summary: {
+          totalOrders,
+          totalRevenue,
+          averageOrderValue,
+          peakDay: {
+            date: peakDay.date,
+            revenue: peakDay.revenue,
+            orders: peakDay.orders
+          },
+          period: {
+            start: startDate.toISOString().split('T')[0],
+            end: new Date().toISOString().split('T')[0],
+            range
+          }
+        }
+      };
+    } catch (error: any) {
+      console.error("Error fetching sales data:", error);
+      throw new Error("Failed to fetch sales data");
+    }
+  }
+  // Get all products with farmer details
+  static async getAllProducts() {
+    return prisma.product.findMany({
       include: {
         farmer: {
           select: {
             id: true,
             first_name: true,
             last_name: true,
-            email: true
+            email: true,
+            phone: true,
+            location: true
           }
         },
-        _count: {
+        category: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  // ✅ Verify a product
+  static async verifyProduct(productId: number) {
+    return prisma.product.update({
+      where: { id: productId },
+      data: { is_verified: true },
+      include: {
+        farmer: {
           select: {
-            cartItems: true,
-            orderItems: true
+            first_name: true,
+            last_name: true,
+            email: true
           }
         }
       }
     });
+  }
 
-    if (!product) {
-      throw new Error("Product not found");
-    }
+  // ✅ Feature a product (add to featured list)
+  static async featureProduct(productId: number) {
+    // You may need to add a 'is_featured' field to your Product model
+    // For now, we can add a 'featured' tag
+    const product = await prisma.product.findUnique({
+      where: { id: productId }
+    });
+    
+    const currentTags = product?.tags || "";
+    const hasFeatured = currentTags.includes("featured");
+    const newTags = hasFeatured 
+      ? currentTags.replace("featured", "").replace(/,,/g, ",").replace(/^,|,$/g, "")
+      : currentTags ? `${currentTags},featured` : "featured";
+    
+    return prisma.product.update({
+      where: { id: productId },
+      data: { tags: newTags || null }
+    });
+  }
 
-    return product;
+  // ✅ Delete a product
+  static async deleteProduct(productId: number) {
+    return prisma.product.delete({
+      where: { id: productId }
+    });
   }
 }

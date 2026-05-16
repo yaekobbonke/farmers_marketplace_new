@@ -157,30 +157,218 @@ export class AssistantController {
       }
     }
   }
+
   static async healthCheck(req: Request, res: Response) {
-  try {
-    const FASTAPI_URL = process.env.FASTAPI_URL;
-    
-    if (!FASTAPI_URL) {
+    try {
+      const FASTAPI_URL = process.env.FASTAPI_URL;
+      
+      if (!FASTAPI_URL) {
+        return res.status(500).json({
+          success: false,
+          message: "FASTAPI_URL environment variable not configured"
+        });
+      }
+      
+      // Simple health check
+      return res.status(200).json({
+        success: true,
+        message: "Assistant controller is operational",
+        config: {
+          fastapi_url: FASTAPI_URL ? "configured" : "missing"
+        }
+      });
+    } catch (error: any) {
       return res.status(500).json({
         success: false,
-        message: "FASTAPI_URL environment variable not configured"
+        message: error.message
       });
     }
-    
-    // Simple health check
-    return res.status(200).json({
-      success: true,
-      message: "Assistant controller is operational",
-      config: {
-        fastapi_url: FASTAPI_URL ? "configured" : "missing"
-      }
-    });
-  } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
   }
-}
+
+  static async getFarmerInsights(req: Request, res: Response) {
+    try {
+      const userId = req.user?.id;
+      
+      if (!userId) {
+        return res.status(401).json({ 
+          success: false, 
+          message: "Unauthorized. Please log in." 
+        });
+      }
+      
+      console.log(`🔍 Fetching insights for farmer ID: ${userId}`);
+      
+      const insights = await AssistantService.getFarmerInsights(userId);
+      
+      return res.status(200).json({
+        success: true,
+        data: insights
+      });
+      
+    } catch (error: any) {
+      console.error("Error fetching farmer insights:", error.message);
+      
+      // Return fallback insights instead of error
+      return res.status(200).json({
+        success: true,
+        data: {
+          hasData: false,
+          message: "Welcome to your farm dashboard!",
+          recommendation: "Start adding products to get AI-powered insights and recommendations.",
+          actionLink: "/farmer/products/add",
+          actionText: "Add Your First Product",
+          topProduct: null,
+          pendingCount: 0,
+          lowStockCount: 0,
+          insights: [
+            {
+              type: "info",
+              message: "Add your first product to start selling",
+              action: "Get Started",
+              link: "/farmer/products/add"
+            }
+          ]
+        }
+      });
+    }
+  }
+
+  //Get admin insights
+  static async getAdminInsights(req: Request, res: Response) {
+    try {
+      const userRole = req.user?.role;
+      
+      if (userRole !== "ADMIN") {
+        return res.status(403).json({ 
+          success: false, 
+          message: "Admin access required" 
+        });
+      }
+      
+      // You can implement admin-specific insights here
+      const insights = {
+        platformStats: {
+          totalUsers: 0,
+          totalProducts: 0,
+          totalOrders: 0,
+          totalRevenue: 0
+        },
+        pendingApprovals: {
+          products: 0,
+          farmers: 0
+        },
+        insights: [
+          {
+            type: "info",
+            message: "Admin dashboard ready",
+            action: "View Dashboard",
+            link: "/admin/dashboard"
+          }
+        ]
+      };
+      
+      return res.status(200).json({
+        success: true,
+        data: insights
+      });
+      
+    } catch (error: any) {
+      console.error("Error fetching admin insights:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch admin insights"
+      });
+    }
+  }
+  static async getChatHistory(req: Request, res: Response) {
+    try {
+      const userId = req.user?.id;
+      
+      if (!userId) {
+        return res.status(401).json({ 
+          success: false, 
+          message: "Unauthorized" 
+        });
+      }
+      
+      const history = await AssistantService.getChatHistory(userId);
+      
+      return res.status(200).json({
+        success: true,
+        data: history
+      });
+      
+    } catch (error: any) {
+      console.error("❌ Error fetching chat history:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch chat history"
+      });
+    }
+  }
+
+  // ✅ ADD THIS - Save chat message
+  static async saveChatMessage(req: Request, res: Response) {
+    try {
+      const userId = req.user?.id;
+      const { query, response } = req.body;
+      
+      if (!userId) {
+        return res.status(401).json({ 
+          success: false, 
+          message: "Unauthorized" 
+        });
+      }
+      
+      if (!query) {
+        return res.status(400).json({
+          success: false,
+          message: "Query is required"
+        });
+      }
+      
+      const saved = await AssistantService.saveChatMessage(userId, query, response);
+      
+      return res.status(200).json({
+        success: true,
+        data: saved,
+        message: "Chat message saved successfully"
+      });
+      
+    } catch (error: any) {
+      console.error("❌ Error saving chat message:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Failed to save chat message"
+      });
+    }
+  }
+
+  // ✅ ADD THIS - Get price forecast
+  static async getPriceForecast(req: Request, res: Response) {
+    try {
+      const productId = parseInt(req.params.productId);
+      
+      if (isNaN(productId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid product ID"
+        });
+      }
+      
+      const forecast = await AssistantService.getPriceForecast(productId);
+      
+      return res.status(200).json({
+        success: true,
+        data: forecast
+      });
+      
+    } catch (error: any) {
+      console.error("❌ Error fetching price forecast:", error.message);
+      return res.status(500).json({
+        success: false,
+        message: error.message || "Failed to fetch price forecast"
+      });
+    }
+  }
 }

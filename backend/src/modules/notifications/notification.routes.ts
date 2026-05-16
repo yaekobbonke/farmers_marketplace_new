@@ -1,18 +1,18 @@
 import { Router } from "express";
 import { NotificationController } from "./notification.controller";
-import { authMiddleware } from "../../middleware/authMiddleware";
+import { authenticate } from "../../middleware/authMiddleware";
 
 const router = Router();
-const notificationController = new NotificationController();
 
 // All routes require authentication
-router.use(authMiddleware);
+router.use(authenticate);
 
 // Notification routes
-router.get("/", notificationController.getUserNotifications);
-router.get("/unread-count", notificationController.getUnreadCount);
-router.put("/:id/read", notificationController.markAsRead);
-router.put("/mark-all-read", notificationController.markAllAsRead);
-router.delete("/:id", notificationController.deleteNotification);
+router.get("/", NotificationController.getUserNotifications);
+router.get("/unread-count", NotificationController.getUnreadCount);
+
+router.put("/mark-all-read", NotificationController.markAllAsRead);
+router.put("/:id/read", NotificationController.markAsRead);
+router.delete("/:id", NotificationController.deleteNotification);
 
 export default router;

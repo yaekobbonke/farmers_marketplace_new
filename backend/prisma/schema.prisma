@@ -4,25 +4,28 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  
 }
 
 model User {
   id         Int       @id @default(autoincrement())
   first_name String
   last_name  String
-  phone      String   @unique
+  phone      String    @unique
   email      String    @unique
   password   String
   role       Role      @default(FARMER)
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
-  location    String?
+  location   String?
   isActive   Boolean   @default(true)
   is_suspended Boolean @default(false)
-  cart       Cart?
-  orders     Order[]
-  products   Product[]
+  
+  // Relations - removed relation names that were causing issues
+  cart         Cart?
+  orders       Order[]
+  products     Product[]
+  notifications Notification[]
+  searchHistory SearchHistory[]
 
   @@index([location])
   @@index([email])
@@ -35,19 +38,22 @@ model Category {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   products  Product[]
+
+  @@index([name])
 }
 
 model Product {
   id               Int               @id @default(autoincrement())
   name             String
-  type             ProductType      @default(CROP)
+  type             ProductType       @default(CROP)
   quantity         Decimal           @db.Decimal(10, 2)
   unit             String
   price            Decimal           @db.Decimal(10, 2)
   description      String?
   location         String?
-  
-  is_verified      Boolean @default(false)
+  is_verified      Boolean           @default(false)
+  is_featured      Boolean           @default(false)
+  views            Int               @default(0)
   farmerId         Int
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -57,17 +63,20 @@ model Product {
   embeddingId      String?
   latitude         Float?
   longitude        Float?
+  
+  // Relations with CASCADE - simplified
+  category         Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  farmer           User              @relation(fields: [farmerId], references: [id], onDelete: Cascade)
   cartItems        CartItem[]
   marketPrice      MarketPrice[]
   orderItems       OrderItem[]
   priceHistories   PriceHistory[]
   pricePredictions PricePrediction[]
-  category         Category?         @relation(fields: [categoryId], references: [id])
-  farmer           User              @relation(fields: [farmerId], references: [id])
 
   @@index([name])
   @@index([status])
-  @@index([categoryId, status])
+  @@index([farmerId])
+  @@index([categoryId])
 }
 
 model PriceHistory {
@@ -76,9 +85,10 @@ model PriceHistory {
   price     Decimal  @db.Decimal(10, 2)
   createdAt DateTime @default(now())
   source    String?
-  product   Product  @relation(fields: [productId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@index([productId, createdAt])
+  @@index([productId])
+  @@index([createdAt])
 }
 
 model PricePrediction {
@@ -87,7 +97,10 @@ model PricePrediction {
   predictedPrice Decimal  @db.Decimal(10, 2)
   predictedDate  DateTime
   createdAt      DateTime @default(now())
-  product        Product  @relation(fields: [productId], references: [id])
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([predictedDate])
 }
 
 model MarketPrice {
@@ -99,9 +112,11 @@ model MarketPrice {
   recordedAt DateTime @default(now())
   productId  Int
   createdAt  DateTime @default(now())
-  product    Product  @relation(fields: [productId], references: [id])
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@index([productId, market, recordedAt])
+  @@index([productId])
+  @@index([market])
+  @@index([recordedAt])
 }
 
 model Cart {
@@ -109,8 +124,10 @@ model Cart {
   buyerId   Int        @unique
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
-  buyer     User       @relation(fields: [buyerId], references: [id])
+  buyer     User       @relation(fields: [buyerId], references: [id], onDelete: Cascade)
   items     CartItem[]
+
+  @@index([buyerId])
 }
 
 model CartItem {
@@ -119,8 +136,12 @@ model CartItem {
   productId Int
   quantity  Decimal @db.Decimal(10, 2)
   unitPrice Decimal @db.Decimal(10, 2)
-  cart      Cart    @relation(fields: [cartId], references: [id])
-  product   Product @relation(fields: [productId], references: [id])
+  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productId])
+  @@index([cartId])
+  @@index([productId])
 }
 
 model Order {
@@ -133,9 +154,13 @@ model Order {
   deliveryAddress String?
   deliveryStatus  DeliveryStatus?
   notes           String?
-  buyer           User            @relation(fields: [buyerId], references: [id])
+  buyer           User            @relation(fields: [buyerId], references: [id], onDelete: Restrict)
   orderItems      OrderItem[]
   payment         Payment?
+
+  @@index([buyerId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model OrderItem {
@@ -144,8 +169,12 @@ model OrderItem {
   productId Int
   quantity  Decimal @db.Decimal(10, 2)
   unitPrice Decimal @db.Decimal(10, 2)
-  order     Order   @relation(fields: [orderId], references: [id])
-  product   Product @relation(fields: [productId], references: [id])
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)  // ✅ Changed from SetNull to Restrict
+
+  @@unique([orderId, productId])
+  @@index([orderId])
+  @@index([productId])
 }
 
 model Payment {
@@ -155,7 +184,52 @@ model Payment {
   createdAt DateTime      @default(now())
   method    PaymentMethod
   status    PaymentStatus @default(PENDING)
-  order     Order         @relation(fields: [orderId], references: [id])
+  order     Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([status])
+}
+
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  title     String
+  message   String
+  type      String    @default("general")
+  isRead    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt @default(now()) // ✅ Add @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([userId, isRead])
+}
+
+model SearchHistory {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  query     String
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model SystemSetting {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique
+  value       String
+  type        String   @default("string") // string, number, boolean, json
+  description String?
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@index([key])
 }
 
 enum Role {

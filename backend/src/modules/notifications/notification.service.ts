@@ -1,22 +1,20 @@
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import prisma from "../../config/prisma";
 
 export class NotificationService {
-  async getUserNotifications(userId: string) {
+  static async getUserNotifications(userId: number) {
     return prisma.notification.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" }
     });
   }
 
-  async getUnreadCount(userId: string) {
+  static async getUnreadCount(userId: number) {
     return prisma.notification.count({
       where: { userId, isRead: false }
     });
   }
 
-  async markAsRead(notificationId: string, userId: string) {
+  static async markAsRead(notificationId: number, userId: number) {
     return prisma.notification.updateMany({
       where: { 
         id: notificationId,
@@ -26,7 +24,7 @@ export class NotificationService {
     });
   }
 
-  async markAllAsRead(userId: string) {
+  static async markAllAsRead(userId: number) {
     return prisma.notification.updateMany({
       where: { 
         userId, 
@@ -36,7 +34,7 @@ export class NotificationService {
     });
   }
 
-  async deleteNotification(notificationId: string, userId: string) {
+  static async deleteNotification(notificationId: number, userId: number) {
     return prisma.notification.deleteMany({
       where: { 
         id: notificationId,
@@ -45,8 +43,8 @@ export class NotificationService {
     });
   }
 
-  async createNotification(data: {
-    userId: string;
+  static async createNotification(data: {
+    userId: number;
     title: string;
     message: string;
     type?: string;

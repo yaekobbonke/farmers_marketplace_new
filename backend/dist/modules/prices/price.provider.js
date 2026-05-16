@@ -47,6 +47,7 @@ class PriceProvider {
     static async addMarketPrice(data) {
         return await prisma_1.default.marketPrice.create({
             data: {
+                id: crypto.randomUUID(),
                 productId: data.productId,
                 price: data.price,
                 market: data.market,
@@ -57,9 +58,7 @@ class PriceProvider {
         });
     }
     /**
-     * UPDATED FOR RESILIENCE: Provides data for Llama 3.
-     * If MarketPrice table is empty, it falls back to the Product table
-     * so the AI doesn't report "No data found."
+     * UPDATED: Provides data for Llama 3 with proper date formatting
      */
     static async getRecentMarketSnapshots(limit) {
         // 1. Try to get official scraped market prices
@@ -74,7 +73,7 @@ class PriceProvider {
         });
         if (marketData.length > 0) {
             return marketData.map(item => ({
-                product: item.product.name,
+                product: item.product?.name || "Unknown Product",
                 market: item.market,
                 price: Number(item.price),
                 unit: item.unit,
@@ -83,18 +82,27 @@ class PriceProvider {
             }));
         }
         // 2. FALLBACK: If no scraped data exists, show the Farmer's listed products
-        // This ensures your UI and AI always have something to show.
         const products = await prisma_1.default.product.findMany({
             take: limit,
             orderBy: { createdAt: 'desc' },
-            where: { status: 'AVAILABLE' }
+            where: { status: 'AVAILABLE', is_verified: true },
+            include: {
+                farmer: {
+                    select: {
+                        first_name: true,
+                        last_name: true,
+                        location: true
+                    }
+                }
+            }
         });
+        // ✅ Fixed: Properly format the fallback data
         return products.map(p => ({
             product: p.name,
-            market: p.location || "Local Market",
+            market: p.location || p.farmer?.location || "Local Market",
             price: Number(p.price),
-            unit: p.unit,
-            recordedAt: p.createdAt,
+            unit: p.unit || "kg",
+            recordedAt: p.createdAt || new Date(), // ✅ Use createdAt as the date
             source: "Farmer Listing"
         }));
     }

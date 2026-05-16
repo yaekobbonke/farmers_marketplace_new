@@ -1,50 +1,42 @@
 import { Router } from "express";
 import { ProductController } from "./product.controller";
-import { authenticate, requireRole } from "../auth/auth.middleware";
+import { authenticate, requireRole } from "../../middleware/authMiddleware";
 
 const router = Router();
 
 /**
  * PUBLIC ROUTES
- * Farmers and Buyers can view products and market insights.
  */
 router.get("/", ProductController.getAll);
+router.get("/search", ProductController.searchProducts);
+router.get("/featured", ProductController.getFeaturedProducts);
+router.get("/category/:categoryId", ProductController.getProductsByCategory);
 router.get("/:id", ProductController.getById);
 
 /**
- * PROTECTED ROUTES (FARMER/ADMIN ONLY)
- * Operations that modify the marketplace catalog.
+ * PROTECTED ROUTES (AUTHENTICATED USERS)
  */
+router.use(authenticate);
 
-// Create a new listing
-router.post(
-  "/", 
-  authenticate, 
-  requireRole("FARMER", "ADMIN"), 
-  ProductController.create
-);
+// Farmer specific routes
+router.get("/farmer/products", ProductController.getFarmerProducts);
+router.get("/farmer/stats", ProductController.getFarmerStats);
+router.get("/farmer/low-stock", ProductController.getLowStockProducts);
 
-// Update an existing listing (Using PATCH for partial updates)
-router.patch(
-  "/:id", 
-  authenticate, 
-  requireRole("FARMER", "ADMIN"), 
-  ProductController.update
-);
+// Product stock update
+router.patch("/:id/stock", ProductController.updateStock);
 
-// Remove a listing
-router.delete(
-  "/:id", 
-  authenticate, 
-  requireRole("FARMER", "ADMIN"), 
-  ProductController.remove
-);
+// Product CRUD
+router.post("/", requireRole("FARMER", "ADMIN"), ProductController.create);
+router.patch("/:id", requireRole("FARMER", "ADMIN"), ProductController.update);
+router.delete("/:id", requireRole("FARMER", "ADMIN"), ProductController.remove);
 
 /**
- * NOTE: 
- * AI Prediction and Market Data routes are currently in price.route.ts.
- * Ensure your frontend calls:
- 
+ * ADMIN ONLY ROUTES
  */
+router.get("/admin/all", requireRole("ADMIN"), ProductController.getAllProductsAdmin);
+router.patch("/admin/:id/verify", requireRole("ADMIN"), ProductController.verifyProduct);
+router.patch("/admin/:id/feature", requireRole("ADMIN"), ProductController.featureProduct);
+router.delete("/admin/:id/reject", requireRole("ADMIN"), ProductController.rejectProduct); // ✅ Add reject product route
 
 export default router;

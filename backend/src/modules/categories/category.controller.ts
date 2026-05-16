@@ -19,19 +19,8 @@ export class CategoryController {
 
   getCategoryById = async (req: Request, res: Response) => {
     try {
-      const category = await this.categoryService.getCategoryById(req.params.id);
-      if (!category) {
-        return res.status(404).json({ success: false, message: "Category not found" });
-      }
-      res.json({ success: true, data: category });
-    } catch (error: any) {
-      res.status(500).json({ success: false, message: error.message });
-    }
-  };
-
-  getCategoryBySlug = async (req: Request, res: Response) => {
-    try {
-      const category = await this.categoryService.getCategoryBySlug(req.params.slug);
+      const id = parseInt(req.params.id);
+      const category = await this.categoryService.getCategoryById(id);
       if (!category) {
         return res.status(404).json({ success: false, message: "Category not found" });
       }
@@ -52,7 +41,8 @@ export class CategoryController {
 
   updateCategory = async (req: Request, res: Response) => {
     try {
-      const category = await this.categoryService.updateCategory(req.params.id, req.body);
+      const id = parseInt(req.params.id);
+      const category = await this.categoryService.updateCategory(id, req.body);
       res.json({ success: true, data: category });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
@@ -61,7 +51,8 @@ export class CategoryController {
 
   deleteCategory = async (req: Request, res: Response) => {
     try {
-      await this.categoryService.deleteCategory(req.params.id);
+      const id = parseInt(req.params.id);
+      await this.categoryService.deleteCategory(id);
       res.json({ success: true, message: "Category deleted successfully" });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });

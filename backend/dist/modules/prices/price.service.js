@@ -8,90 +8,131 @@ class PriceService {
      * Orchestrates the 3-source AI prediction.
      */
     static async getAIPrediction(productId) {
-        // 1. Fetch data with the safety check from provider
+        if (!productId || isNaN(productId)) {
+            throw new Error("Invalid product ID");
+        }
         const signals = await price_provider_1.PriceProvider.getPriceSignals(productId);
-        // Check if the product even exists before trying to predict
         if (!signals || signals.product_name === "Unknown") {
             throw new Error("Could not retrieve valid product signals for prediction.");
         }
         try {
-            // 2. Call FastAPI Forecast Engine
-            // Ensure the keys match what your Python FastAPI PriceInference schema expects
             const response = await ai_client_1.aiClient.post('/forecast/predict', {
-                admin1: "ADDIS ABABA", // Defaulting for general prediction context
+                admin1: "ADDIS ABABA",
                 market_id: 1,
                 commodity_id: productId,
                 category: "CEREALS",
                 commodity: signals.product_name,
                 latitude: 9.02,
                 longitude: 38.75,
-                rfq: signals.scraped_price || signals.farmer_price, // Use scraped as baseline if available
+                rfq: signals.scraped_price || signals.farmer_price,
                 r3q: signals.historical_avg
             });
-            const prediction = response.data.prediction.predicted_price_etb;
-            // 3. Persist prediction to PostgreSQL only if valid
-            if (prediction) {
+            const prediction = response.data.prediction?.predicted_price_etb || response.data.predicted_price;
+            if (prediction && !isNaN(prediction)) {
                 await price_provider_1.PriceProvider.savePrediction(productId, prediction);
             }
             return {
                 product: signals.product_name,
-                current: signals.farmer_price,
-                market_average: signals.scraped_price,
-                predicted: prediction,
-                trend: prediction > signals.farmer_price ? "Increasing" : "Decreasing",
-                confidence: response.data.metadata.data_freshness || "standard"
+                current: Number(signals.farmer_price),
+                market_average: Number(signals.scraped_price),
+                predicted: prediction ? Number(prediction) : null,
+                trend: prediction && signals.farmer_price ?
+                    (Number(prediction) > Number(signals.farmer_price) ? "Increasing" : "Decreasing") :
+                    "Stable",
+                confidence: response.data.metadata?.data_freshness || "standard"
             };
         }
         catch (error) {
             console.error("❌ AI Forecast Engine unreachable:", error);
             return {
                 product: signals.product_name,
-                current: signals.farmer_price,
+                current: Number(signals.farmer_price),
+                market_average: Number(signals.scraped_price),
                 predicted: null,
+                trend: "Stable",
+                confidence: "low",
                 error: "AI engine temporarily offline. Please try again later."
             };
         }
     }
     /**
      * Provides a structured feed for the Llama 3 chatbot.
-     * Now handles the resilient mapping from the updated provider.
+     * ✅ FIXED: Properly formats dates and handles missing product names
      */
     static async getRecentMarketSnapshots(limit = 10) {
-        const rawData = await price_provider_1.PriceProvider.getRecentMarketSnapshots(limit);
-        return rawData.map(item => ({
-            commodity: item.product || "Agricultural Commodity", // Matches the .product key from resilient provider
-            price: item.price,
-            market: item.market,
-            source: item.source,
-            unit: item.unit,
-            // Formatting the date for the AgriSmart chat interface
-            recordedAt: item.recordedAt ? new Date(item.recordedAt).toLocaleDateString('en-GB') : "Recently"
-        }));
+        try {
+            const rawData = await price_provider_1.PriceProvider.getRecentMarketSnapshots(limit);
+            console.log("Raw data from PriceProvider:", rawData); // Debug log
+            return rawData.map(item => {
+                // ✅ Safely format the date
+                let formattedDate = "Recently";
+                if (item.recordedAt) {
+                    try {
+                        const date = new Date(item.recordedAt);
+                        if (!isNaN(date.getTime())) {
+                            formattedDate = date.toLocaleDateString('en-GB', {
+                                day: '2-digit',
+                                month: 'short',
+                                year: 'numeric'
+                            });
+                        }
+                    }
+                    catch (e) {
+                        console.warn("Date formatting error:", e);
+                    }
+                }
+                // ✅ Ensure commodity name is not empty
+                const commodityName = item.product && item.product !== "Unknown Product"
+                    ? item.product
+                    : "Agricultural Product";
+                return {
+                    commodity: commodityName,
+                    price: Number(item.price) || 0,
+                    market: item.market || "Local Market",
+                    source: item.source || "Market Data",
+                    unit: item.unit || "kg",
+                    recordedAt: formattedDate
+                };
+            });
+        }
+        catch (error) {
+            console.error("Error fetching market snapshots:", error);
+            // Return empty array instead of throwing
+            return [];
+        }
     }
     /**
      * Processes data pushed from the BeautifulSoup/JSON Scraper.
      */
     static async processScrapedData(payload) {
-        // 1. Validate payload
-        if (!payload.price || isNaN(payload.price)) {
+        if (!payload.name || !payload.price || isNaN(Number(payload.price))) {
             console.error("❌ Invalid price received from scraper.");
             return null;
         }
-        // 2. Use the improved findProductByName (now handles insensitive and partial matches)
         const product = await price_provider_1.PriceProvider.findProductByName(payload.name);
         if (!product) {
-            // Very important for your demo: logging missing mappings
-            console.warn(`⚠️ No database mapping found for scraped item: "${payload.name}". Add this product to the dashboard to track it.`);
+            console.warn(`⚠️ No database mapping found for scraped item: "${payload.name}". Add this product to track it.`);
             return null;
         }
-        // 3. Persist the official market price linked to the correct ID
-        return await price_provider_1.PriceProvider.addMarketPrice({
+        const result = await price_provider_1.PriceProvider.addMarketPrice({
             productId: product.id,
-            price: payload.price,
+            price: Number(payload.price),
             market: payload.market || "Central Market",
             source: "Official ECX Daily Scraper",
             unit: payload.unit || "kg"
         });
+        if (result) {
+            return {
+                id: result.id,
+                productId: result.productId,
+                price: Number(result.price),
+                market: result.market,
+                source: result.source,
+                unit: result.unit,
+                recordedAt: result.recordedAt
+            };
+        }
+        return null;
     }
 }
 exports.PriceService = PriceService;
