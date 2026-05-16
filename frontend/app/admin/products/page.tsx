@@ -15,7 +15,9 @@ import {
   User,
   MapPin,
   DollarSign,
-  RefreshCw
+  RefreshCw,
+  Star,
+  Trash2
 } from "lucide-react";
 
 interface Product {
@@ -27,6 +29,7 @@ interface Product {
   unit: string;
   location: string;
   is_verified: boolean;
+  is_featured?: boolean;
   is_active: boolean;
   createdAt: string;
   farmer: {
@@ -42,6 +45,24 @@ interface Product {
   };
 }
 
+// ✅ Helper function to remove duplicate products
+const removeDuplicateProducts = (products: Product[]): Product[] => {
+  if (!products || !Array.isArray(products)) return [];
+  const seen = new Set<number>();
+  const unique: Product[] = [];
+  
+  for (const product of products) {
+    if (!seen.has(product.id)) {
+      seen.add(product.id);
+      unique.push(product);
+    } else {
+      console.warn(`Duplicate product ID found and removed: ${product.id} - ${product.name}`);
+    }
+  }
+  
+  return unique;
+};
+
 export default function AdminProductsPage() {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
@@ -49,6 +70,7 @@ export default function AdminProductsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState<"all" | "pending" | "verified">("pending");
   const [verifyingId, setVerifyingId] = useState<number | null>(null);
+  const [featuredId, setFeaturedId] = useState<number | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
@@ -56,32 +78,50 @@ export default function AdminProductsPage() {
     fetchProducts();
   }, []);
 
+  // ✅ Updated to use correct admin endpoint with duplicate removal
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const response = await api.get("/product/admin/all");
-      setProducts(response.data.data || []);
+      const response = await api.get("/admin/products");
+      let productsData = response.data.data || [];
+      
+      // ✅ Remove duplicates
+      productsData = removeDuplicateProducts(productsData);
+      console.log(`✅ Loaded ${productsData.length} unique products`);
+      
+      setProducts(productsData);
     } catch (error: any) {
       console.error("Error fetching products:", error);
       if (error.response?.status === 403) {
         alert("Admin access required");
         router.push("/login");
+      } else if (error.response?.status === 404) {
+        // Fallback to product endpoint if admin endpoint doesn't exist
+        try {
+          const fallbackResponse = await api.get("/product/admin/all");
+          let fallbackData = fallbackResponse.data.data || [];
+          fallbackData = removeDuplicateProducts(fallbackData);
+          setProducts(fallbackData);
+        } catch (fallbackError) {
+          console.error("Fallback also failed:", fallbackError);
+        }
       }
     } finally {
       setLoading(false);
     }
   };
 
+  // ✅ Updated to use correct admin verify endpoint
   const handleVerify = async (productId: number) => {
     setVerifyingId(productId);
     try {
       await api.patch(`/admin/products/${productId}/verify`);
-      // Update product status in local state
       setProducts(prev =>
         prev.map(p =>
           p.id === productId ? { ...p, is_verified: true } : p
         )
       );
+      alert("✅ Product verified successfully! Farmer has been notified.");
     } catch (error: any) {
       console.error("Error verifying product:", error);
       alert(error.response?.data?.message || "Failed to verify product");
@@ -90,13 +130,34 @@ export default function AdminProductsPage() {
     }
   };
 
+  // ✅ Feature/Unfeature product
+  const handleFeature = async (productId: number, currentStatus: boolean | undefined) => {
+    setFeaturedId(productId);
+    try {
+      await api.patch(`/admin/products/${productId}/feature`);
+      setProducts(prev =>
+        prev.map(p =>
+          p.id === productId ? { ...p, is_featured: !currentStatus } : p
+        )
+      );
+      alert(currentStatus ? "Product unfeatured" : "🌟 Product featured!");
+    } catch (error: any) {
+      console.error("Error featuring product:", error);
+      alert(error.response?.data?.message || "Failed to update featured status");
+    } finally {
+      setFeaturedId(null);
+    }
+  };
+
+  // ✅ Reject/Delete product
   const handleReject = async (productId: number) => {
-    if (!confirm("Are you sure you want to reject this product?")) return;
+    if (!confirm("Are you sure you want to reject/delete this product? This action cannot be undone.")) return;
     
     setVerifyingId(productId);
     try {
       await api.delete(`/admin/products/${productId}`);
       setProducts(prev => prev.filter(p => p.id !== productId));
+      alert("Product deleted successfully");
     } catch (error: any) {
       console.error("Error rejecting product:", error);
       alert(error.response?.data?.message || "Failed to reject product");
@@ -111,11 +172,9 @@ export default function AdminProductsPage() {
   };
 
   const filteredProducts = products.filter(product => {
-    // Filter by verification status
     if (filter === "pending" && product.is_verified) return false;
     if (filter === "verified" && !product.is_verified) return false;
     
-    // Filter by search term
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       return (
@@ -192,7 +251,6 @@ export default function AdminProductsPage() {
         {/* Filters and Search */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-6">
           <div className="flex flex-col md:flex-row gap-4">
-            {/* Search */}
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
@@ -204,7 +262,6 @@ export default function AdminProductsPage() {
               />
             </div>
             
-            {/* Filter Buttons */}
             <div className="flex gap-2">
               <button
                 onClick={() => setFilter("pending")}
@@ -283,7 +340,7 @@ export default function AdminProductsPage() {
                             {product.category?.name || "Uncategorized"}
                           </p>
                         </div>
-                      </td>
+                       </td>
                       <td className="p-4">
                         <div className="flex items-center gap-2">
                           <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center text-green-700 font-bold text-sm">
@@ -296,37 +353,44 @@ export default function AdminProductsPage() {
                             <p className="text-xs text-slate-500">{product.farmer.email}</p>
                           </div>
                         </div>
-                      </td>
+                       </td>
                       <td className="p-4">
                         <span className="font-bold text-green-600">
                           {product.price.toLocaleString()} ETB
                         </span>
                         <p className="text-xs text-slate-500">per {product.unit}</p>
-                      </td>
+                       </td>
                       <td className="p-4">
                         <span className={`font-medium ${product.quantity < 10 ? "text-red-600" : "text-slate-700"}`}>
                           {product.quantity} {product.unit}
                         </span>
-                      </td>
+                       </td>
                       <td className="p-4">
                         <div className="flex items-center gap-1 text-sm text-slate-600">
                           <MapPin size={14} />
                           {product.location || product.farmer.location || "Unknown"}
                         </div>
-                      </td>
+                       </td>
                       <td className="p-4">
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${
-                          product.is_verified
-                            ? "bg-green-100 text-green-700"
-                            : "bg-yellow-100 text-yellow-700"
-                        }`}>
-                          {product.is_verified ? (
-                            <><CheckCircle size={12} /> Verified</>
-                          ) : (
-                            <><Clock size={12} /> Pending</>
+                        <div className="flex flex-col gap-1">
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold w-fit ${
+                            product.is_verified
+                              ? "bg-green-100 text-green-700"
+                              : "bg-yellow-100 text-yellow-700"
+                          }`}>
+                            {product.is_verified ? (
+                              <><CheckCircle size={12} /> Verified</>
+                            ) : (
+                              <><Clock size={12} /> Pending</>
+                            )}
+                          </span>
+                          {product.is_featured && (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-700 w-fit">
+                              <Star size={12} /> Featured
+                            </span>
                           )}
-                        </span>
-                      </td>
+                        </div>
+                       </td>
                       <td className="p-4">
                         <div className="flex gap-2">
                           <button
@@ -335,6 +399,18 @@ export default function AdminProductsPage() {
                             title="View Details"
                           >
                             <Eye size={18} />
+                          </button>
+                          <button
+                            onClick={() => handleFeature(product.id, product.is_featured)}
+                            disabled={featuredId === product.id}
+                            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
+                            title={product.is_featured ? "Remove from featured" : "Make featured"}
+                          >
+                            {featuredId === product.id ? (
+                              <Loader2 size={18} className="animate-spin" />
+                            ) : (
+                              <Star size={18} />
+                            )}
                           </button>
                           {!product.is_verified && (
                             <>
@@ -354,14 +430,14 @@ export default function AdminProductsPage() {
                                 onClick={() => handleReject(product.id)}
                                 disabled={verifyingId === product.id}
                                 className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                                title="Reject"
+                                title="Delete"
                               >
-                                <XCircle size={18} />
+                                <Trash2 size={18} />
                               </button>
                             </>
                           )}
                         </div>
-                      </td>
+                       </td>
                     </tr>
                   ))
                 )}
@@ -399,7 +475,7 @@ export default function AdminProductsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-bold text-slate-400 uppercase">Price</label>
-                  <p className="text-xl font-bold text-green-600">{selectedProduct.price} ETB</p>
+                  <p className="text-xl font-bold text-green-600">{selectedProduct.price.toLocaleString()} ETB</p>
                   <p className="text-xs text-slate-500">per {selectedProduct.unit}</p>
                 </div>
                 <div>

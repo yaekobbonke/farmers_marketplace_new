@@ -14,7 +14,8 @@ import {
   Check,
   UserCog,
   Crown,
-  UserX
+  UserX,
+  AlertCircle
 } from "lucide-react";
 
 interface User {
@@ -41,6 +42,8 @@ export default function AdminUsersPage() {
   const [deleting, setDeleting] = useState(false);
   const [showMenuFor, setShowMenuFor] = useState<number | null>(null);
   const [updatingRole, setUpdatingRole] = useState<number | null>(null);
+  const [suspending, setSuspending] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -48,10 +51,12 @@ export default function AdminUsersPage() {
 
   const fetchUsers = async () => {
     try {
+      setError(null);
       const response = await api.get("/admin/users");
       setUsers(response.data.data);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching users:", error);
+      setError(error.response?.data?.message || "Failed to fetch users");
     } finally {
       setLoading(false);
     }
@@ -60,11 +65,12 @@ export default function AdminUsersPage() {
   const handleRoleChange = async (userId: number, newRole: string) => {
     setUpdatingRole(userId);
     try {
-      await api.patch(`/admin/users/${userId}/role`, { role: newRole });
+      // ✅ Use PUT to match backend
+      const response = await api.put(`/admin/users/${userId}/role`, { role: newRole });
       setUsers(prev => prev.map(u => 
         u.id === userId ? { ...u, role: newRole } : u
       ));
-      alert(`User role updated to ${newRole}`);
+      alert(response.data.message || `User role updated to ${newRole}`);
     } catch (error: any) {
       console.error("Error updating role:", error);
       alert(error.response?.data?.message || "Failed to update user role");
@@ -79,11 +85,11 @@ export default function AdminUsersPage() {
     
     setDeleting(true);
     try {
-      await api.delete(`/admin/users/${selectedUser.id}`);
+      const response = await api.delete(`/admin/users/${selectedUser.id}`);
       setUsers(prev => prev.filter(u => u.id !== selectedUser.id));
       setShowDeleteModal(false);
       setSelectedUser(null);
-      alert("User deleted successfully");
+      alert(response.data.message || "User deleted successfully");
     } catch (error: any) {
       console.error("Error deleting user:", error);
       alert(error.response?.data?.message || "Failed to delete user");
@@ -94,22 +100,28 @@ export default function AdminUsersPage() {
   };
 
   const handleSuspendToggle = async (user: User) => {
+    setSuspending(user.id);
     try {
-      await api.patch(`/admin/users/${user.id}/suspend`, { isSuspended: !user.is_suspended });
+      const response = await api.patch(`/admin/users/${user.id}/suspend`, { 
+        isSuspended: !user.is_suspended 
+      });
       setUsers(prev => prev.map(u => 
         u.id === user.id ? { ...u, is_suspended: !u.is_suspended } : u
       ));
-      setShowMenuFor(null);
+      alert(response.data.message || `User ${user.is_suspended ? 'activated' : 'suspended'} successfully`);
     } catch (error: any) {
       console.error("Error toggling user status:", error);
       alert(error.response?.data?.message || "Failed to update user status");
+    } finally {
+      setSuspending(null);
+      setShowMenuFor(null);
     }
   };
 
   const filteredUsers = users.filter(user =>
-    user.first_name.toLowerCase().includes(search.toLowerCase()) ||
-    user.last_name.toLowerCase().includes(search.toLowerCase()) ||
-    user.email.toLowerCase().includes(search.toLowerCase())
+    user.first_name?.toLowerCase().includes(search.toLowerCase()) ||
+    user.last_name?.toLowerCase().includes(search.toLowerCase()) ||
+    user.email?.toLowerCase().includes(search.toLowerCase())
   );
 
   const getRoleBadge = (role: string) => {
@@ -127,6 +139,21 @@ export default function AdminUsersPage() {
     return (
       <div className="flex items-center justify-center h-96">
         <Loader2 className="animate-spin text-green-600" size={48} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96">
+        <AlertCircle size={48} className="text-red-500 mb-4" />
+        <p className="text-red-600 mb-4">{error}</p>
+        <button
+          onClick={fetchUsers}
+          className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700"
+        >
+          Try Again
+        </button>
       </div>
     );
   }
@@ -192,7 +219,13 @@ export default function AdminUsersPage() {
                       <span className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1 w-fit ${
                         user.is_suspended ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
                       }`}>
-                        {user.is_suspended ? <ShieldAlert size={12} /> : <Shield size={12} />}
+                        {suspending === user.id ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : user.is_suspended ? (
+                          <ShieldAlert size={12} />
+                        ) : (
+                          <Shield size={12} />
+                        )}
                         {user.is_suspended ? 'Suspended' : 'Active'}
                       </span>
                     </td>
@@ -230,9 +263,13 @@ export default function AdminUsersPage() {
                                   <button
                                     onClick={() => handleRoleChange(user.id, "ADMIN")}
                                     disabled={updatingRole === user.id}
-                                    className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                                    className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50"
                                   >
-                                    <Crown size={14} />
+                                    {updatingRole === user.id ? (
+                                      <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                      <Crown size={14} />
+                                    )}
                                     Promote to Admin
                                   </button>
                                 )}
@@ -240,9 +277,13 @@ export default function AdminUsersPage() {
                                   <button
                                     onClick={() => handleRoleChange(user.id, "FARMER")}
                                     disabled={updatingRole === user.id}
-                                    className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                    className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
                                   >
-                                    <Shield size={14} />
+                                    {updatingRole === user.id ? (
+                                      <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                      <Shield size={14} />
+                                    )}
                                     Make Farmer
                                   </button>
                                 )}
@@ -250,9 +291,13 @@ export default function AdminUsersPage() {
                                   <button
                                     onClick={() => handleRoleChange(user.id, "BUYER")}
                                     disabled={updatingRole === user.id}
-                                    className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
                                   >
-                                    <Shield size={14} />
+                                    {updatingRole === user.id ? (
+                                      <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                      <Shield size={14} />
+                                    )}
                                     Make Buyer
                                   </button>
                                 )}
@@ -260,9 +305,13 @@ export default function AdminUsersPage() {
                                   <button
                                     onClick={() => handleRoleChange(user.id, "FARMER")}
                                     disabled={updatingRole === user.id}
-                                    className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                                    className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
                                   >
-                                    <UserX size={14} />
+                                    {updatingRole === user.id ? (
+                                      <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                      <UserX size={14} />
+                                    )}
                                     Demote from Admin
                                   </button>
                                 )}
@@ -274,13 +323,19 @@ export default function AdminUsersPage() {
                               <button
                                 onClick={() => {
                                   handleSuspendToggle(user);
-                                  setShowMenuFor(null);
                                 }}
-                                className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-slate-50 rounded-lg transition-colors ${
+                                disabled={suspending === user.id}
+                                className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-slate-50 rounded-lg transition-colors disabled:opacity-50 ${
                                   user.is_suspended ? 'text-green-600' : 'text-yellow-600'
                                 }`}
                               >
-                                {user.is_suspended ? <Check size={14} /> : <ShieldAlert size={14} />}
+                                {suspending === user.id ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : user.is_suspended ? (
+                                  <Check size={14} />
+                                ) : (
+                                  <ShieldAlert size={14} />
+                                )}
                                 {user.is_suspended ? 'Activate User' : 'Suspend User'}
                               </button>
                               

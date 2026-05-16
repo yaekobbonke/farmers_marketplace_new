@@ -9,7 +9,8 @@ import {
   CheckCircle2,
   Loader2,
   Sprout as FarmerIcon,
-  ShoppingBag as BuyerIcon
+  ShoppingBag as BuyerIcon,
+  ShieldCheck
 } from "lucide-react";
 import Link from "next/link";
 import api from "@/lib/api"; 
@@ -17,8 +18,11 @@ import api from "@/lib/api";
 export default function RegisterPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  // New state for password confirmation
   const [confirmPassword, setConfirmPassword] = useState("");
+  
+  // ✅ Add state for admin mode toggle
+  const [showAdminOption, setShowAdminOption] = useState(false);
+  const [adminSecret, setAdminSecret] = useState("");
 
   const [status, setStatus] = useState<{
     type: "error" | "success" | null;
@@ -38,10 +42,49 @@ export default function RegisterPage() {
     role: "FARMER",
   });
 
+  // ✅ Admin secret key (change this to something secure)
+  const ADMIN_SECRET_KEY = "admin123"; // Temporary - change this!
+
+  // ✅ Check if admin secret is correct
+  const isAdminSecretValid = adminSecret === ADMIN_SECRET_KEY;
+
+  // Role options with conditional admin
+  const getRoleOptions = () => {
+    const options = [
+      { value: "FARMER", label: "Farmer", icon: <FarmerIcon size={18} /> },
+      { value: "BUYER", label: "Buyer", icon: <BuyerIcon size={18} /> }
+    ];
+    
+    // ✅ Add admin option if secret is correct or showAdminOption is true
+    if (showAdminOption && isAdminSecretValid) {
+      options.push({ 
+        value: "ADMIN", 
+        label: "Admin", 
+        icon: <ShieldCheck size={18} /> 
+      });
+    }
+    
+    return options;
+  };
+
+  // Handle secret key input - shows admin option when correct
+  const handleAdminSecretChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setAdminSecret(value);
+    if (value === ADMIN_SECRET_KEY) {
+      setShowAdminOption(true);
+    } else {
+      setShowAdminOption(false);
+      // Reset role if it was set to ADMIN and secret becomes invalid
+      if (formData.role === "ADMIN") {
+        setFormData(prev => ({ ...prev, role: "FARMER" }));
+      }
+    }
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // 1. Password Confirmation Logic
     if (formData.password !== confirmPassword) {
       return setStatus({
         type: "error",
@@ -74,11 +117,7 @@ export default function RegisterPage() {
     }
   };
 
-  // Role options - only Farmer and Buyer (Admin removed)
-  const roleOptions = [
-    { value: "FARMER", label: "Farmer", icon: <FarmerIcon size={18} /> },
-    { value: "BUYER", label: "Buyer", icon: <BuyerIcon size={18} /> }
-  ];
+  const roleOptions = getRoleOptions();
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 py-12">
@@ -171,8 +210,8 @@ export default function RegisterPage() {
 
           <p className="text-xs font-black text-slate-400 uppercase tracking-widest pl-2 pt-2">I am a:</p>
           
-          {/* ✅ Only Farmer and Buyer options - ADMIN removed */}
-          <div className="flex gap-3">
+          {/* Role options - shows Admin only when secret is entered */}
+          <div className="flex flex-wrap gap-3">
             {roleOptions.map((role) => (
               <button
                 key={role.value}
@@ -180,7 +219,9 @@ export default function RegisterPage() {
                 onClick={() => setFormData({ ...formData, role: role.value })}
                 className={`flex-1 py-3 rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 ${
                   formData.role === role.value 
-                  ? "bg-green-600 text-white shadow-lg shadow-green-100 scale-105" 
+                  ? role.value === "ADMIN" 
+                    ? "bg-purple-600 text-white shadow-lg shadow-purple-100 scale-105" 
+                    : "bg-green-600 text-white shadow-lg shadow-green-100 scale-105"
                   : "bg-slate-50 text-slate-400 border border-transparent hover:border-slate-200"
                 }`}
               >
@@ -190,13 +231,35 @@ export default function RegisterPage() {
             ))}
           </div>
 
-          {/* Info note about admin registration */}
-          <div className="bg-blue-50 rounded-xl p-3">
-            <p className="text-xs text-blue-600 text-center">
-              ℹ️ The first registered user automatically becomes Admin.
-              <br />
-              Regular users can only register as Farmer or Buyer.
-            </p>
+          {/* ✅ Hidden Admin Registration Section */}
+          <div className="mt-4 pt-2 border-t border-slate-100">
+            <details className="group">
+              <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600 transition-colors">
+                🔒 Admin Registration (Click to expand)
+              </summary>
+              <div className="mt-3 p-3 bg-slate-50 rounded-xl">
+                <p className="text-xs text-slate-500 mb-2">
+                  Enter the admin secret key to enable admin registration:
+                </p>
+                <input
+                  type="password"
+                  value={adminSecret}
+                  onChange={handleAdminSecretChange}
+                  placeholder="Enter admin secret key"
+                  className="w-full p-2 rounded-lg bg-white border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                {showAdminOption && isAdminSecretValid && (
+                  <p className="text-xs text-green-600 mt-2">
+                    ✅ Admin registration enabled! Select "Admin" as your role above.
+                  </p>
+                )}
+                {adminSecret && !isAdminSecretValid && (
+                  <p className="text-xs text-red-500 mt-2">
+                    ❌ Invalid secret key
+                  </p>
+                )}
+              </div>
+            </details>
           </div>
 
           <button

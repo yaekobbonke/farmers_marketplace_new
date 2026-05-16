@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { 
@@ -41,10 +41,24 @@ interface Notification {
   productId?: number;
 }
 
+// ✅ Function to load user from localStorage synchronously for initial state
+const getUserFromStorage = (): UserData | null => {
+  if (typeof window === 'undefined') return null;
+  const userStr = localStorage.getItem("user");
+  if (!userStr) return null;
+  try {
+    return JSON.parse(userStr);
+  } catch (error) {
+    console.error("Failed to parse user data:", error);
+    return null;
+  }
+};
+
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [user, setUser] = useState<UserData | null>(null);
+  // ✅ Initialize user state directly to avoid useEffect
+  const [user, setUser] = useState<UserData | null>(getUserFromStorage);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -56,66 +70,70 @@ export default function Navbar() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // Fetch notifications
-  const fetchNotifications = async () => {
-    if (!user) return;
+  // ✅ Memoize fetchNotifications to prevent unnecessary re-renders
+  const fetchNotifications = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!user || !token) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
     
     try {
       const response = await api.get("/notifications");
       const data = response.data.data || [];
       setNotifications(data);
       setUnreadCount(data.filter((n: Notification) => !n.read).length);
-    } catch (error) {
-      console.error("Error fetching notifications:", error);
+    } catch (error: any) {
+      if (error.response?.status !== 401) {
+        console.error("Error fetching notifications:", error);
+      }
+      setNotifications([]);
+      setUnreadCount(0);
     }
-  };
+  }, [user]);
 
   // Mark notification as read
-  const markAsRead = async (notificationId: number) => {
+  const markAsRead = useCallback(async (notificationId: number) => {
     try {
-      await api.patch(`/notifications/${notificationId}/read`);
+      await api.put(`/notifications/${notificationId}/read`);
       setNotifications(prev =>
         prev.map(n =>
           n.id === notificationId ? { ...n, read: true } : n
         )
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch (error) {
-      console.error("Error marking notification as read:", error);
-    }
-  };
-
-  // Mark all as read
-  const markAllAsRead = async () => {
-    try {
-      await api.patch("/notifications/mark-all-read");
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-      setUnreadCount(0);
-    } catch (error) {
-      console.error("Error marking all as read:", error);
-    }
-  };
-
-  // Poll for new notifications every 30 seconds
-  useEffect(() => {
-    if (!user) return;
-    
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
-  }, [user]);
-
-  useEffect(() => {
-    const userStr = localStorage.getItem("user");
-    if (userStr) {
-      try {
-        setUser(JSON.parse(userStr));
-      } catch (error) {
-        console.error("Failed to parse user data:", error);
+    } catch (error: any) {
+      if (error.response?.status !== 401) {
+        console.error("Error marking notification as read:", error);
       }
     }
   }, []);
 
+  // Mark all as read
+  const markAllAsRead = useCallback(async () => {
+    try {
+      await api.put("/notifications/mark-all-read");
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch (error: any) {
+      if (error.response?.status !== 401) {
+        console.error("Error marking all as read:", error);
+      }
+    }
+  }, []);
+
+  // ✅ Fixed: Use timeout to avoid cascading renders
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (user && token) {
+      fetchNotifications();
+      const interval = setInterval(fetchNotifications, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user, fetchNotifications]);
+
+  // ✅ Fixed: Handle scroll with cleanup
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 10);
@@ -124,7 +142,7 @@ export default function Navbar() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Close dropdowns when clicking outside
+  // ✅ Fixed: Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -138,11 +156,15 @@ export default function Navbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Close menus on route change
+  // ✅ Fixed: Close menus on route change - deferred to avoid warning
   useEffect(() => {
-    setIsMobileMenuOpen(false);
-    setIsDropdownOpen(false);
-    setIsNotificationOpen(false);
+    const timeoutId = setTimeout(() => {
+      setIsMobileMenuOpen(false);
+      setIsDropdownOpen(false);
+      setIsNotificationOpen(false);
+    }, 0);
+    
+    return () => clearTimeout(timeoutId);
   }, [pathname]);
 
   const isActive = (path: string) => pathname === path;
@@ -152,6 +174,8 @@ export default function Navbar() {
     localStorage.removeItem("user");
     localStorage.removeItem("userRole");
     setUser(null);
+    setNotifications([]);
+    setUnreadCount(0);
     router.push("/login");
   };
 
@@ -269,7 +293,7 @@ export default function Navbar() {
                 >
                   <Bell size={20} />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
                       {unreadCount > 9 ? "9+" : unreadCount}
                     </span>
                   )}

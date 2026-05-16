@@ -115,7 +115,7 @@ export default function AddProductPage() {
       
       console.log("Sending payload:", payload);
       
-      const response = await api.post("/product", payload);
+      const response = await api.post("/products", payload);
 
       if (response.data.success) {
         setSuccess(true);

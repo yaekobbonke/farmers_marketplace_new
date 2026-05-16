@@ -62,7 +62,7 @@ export default function ProductDetailsPage() {
         setError(null);
         
         const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-        const response = await fetch(`${API_BASE}/product/${id}`);
+        const response = await fetch(`${API_BASE}/products/${id}`);
         
         if (!response.ok) {
           if (response.status === 404) {

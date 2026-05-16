@@ -19,7 +19,12 @@ import {
   TrendingUp,
   BarChart3,
   Bell,
-  Globe
+  Globe,
+  Activity,
+  FileBarChart,
+  Clock,
+  CheckCircle,
+  Eye
 } from "lucide-react";
 import { useState } from "react";
 
@@ -65,6 +70,16 @@ export default function AdminSidebar({ children }: { children: React.ReactNode }
       name: "Dashboard",
       icon: <LayoutDashboard size={20} />,
       href: "/admin/dashboard"
+    },
+    {
+      name: "Activity & Reports",
+      icon: <Activity size={20} />,
+      subItems: [
+        { name: "Activity Log", href: "/admin/activity", icon: <Clock size={16} /> },
+        { name: "Reports & Analytics", href: "/admin/reports", icon: <FileBarChart size={16} /> },
+        { name: "User Activity", href: "/admin/activity/users", icon: <Users size={16} /> },
+        { name: "Product Activity", href: "/admin/activity/products", icon: <ShoppingBag size={16} /> }
+      ]
     },
     {
       name: "User Management",
@@ -186,6 +201,10 @@ export default function AdminSidebar({ children }: { children: React.ReactNode }
                       >
                         {subItem.icon && <span className="opacity-60">{subItem.icon}</span>}
                         {subItem.name}
+                        {/* Optional: Show active indicator */}
+                        {pathname === subItem.href && (
+                          <CheckCircle size={12} className="ml-auto text-green-400" />
+                        )}
                       </Link>
                     ))}
                   </div>
@@ -197,6 +216,15 @@ export default function AdminSidebar({ children }: { children: React.ReactNode }
 
         {/* Footer Section */}
         <div className="p-4 border-t border-slate-800 mt-auto">
+          <div className="mb-3 p-3 bg-slate-800/50 rounded-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <Eye size={14} className="text-slate-400" />
+              <span className="text-xs text-slate-400">Admin Access</span>
+            </div>
+            <p className="text-xs text-slate-500">
+              Full system access & analytics
+            </p>
+          </div>
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-xl transition-colors"
@@ -209,7 +237,9 @@ export default function AdminSidebar({ children }: { children: React.ReactNode }
 
       {/* Main Content */}
       <main className="flex-1 ml-72 min-h-screen">
-        {children}
+        <div className="p-8">
+          {children}
+        </div>
       </main>
     </div>
   );

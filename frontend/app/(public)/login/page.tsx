@@ -21,7 +21,7 @@ export default function LoginPage() {
     try {
       console.log("Attempting login with email:", email);
       
-      const response = await api.post("/auth/login", { 
+      const response = await api.post("auth/login", { 
         email: email.trim().toLowerCase(), 
         password: password 
       });
