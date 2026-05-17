@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { AuthController } from "./auth.controller";
-import { authenticate, isAdmin } from "../../middleware/authMiddleware";
+import { authenticate, requireRole } from "../../middleware/authMiddleware";  
 
 const router = Router();
 
@@ -18,8 +18,8 @@ router.post("/change-password", AuthController.changePassword);
 router.delete("/account", AuthController.deleteAccount);
 router.post("/account/deactivate", AuthController.deactivateAccount);
 
-// Admin only routes
-router.use(isAdmin);
+// Admin only routes - Fix here
+router.use(requireRole("ADMIN"));  // Change from isAdmin to requireRole("ADMIN")
 
 router.get("/users", AuthController.getAllUsers);
 router.post("/users/:userId/promote", AuthController.promoteToAdmin);

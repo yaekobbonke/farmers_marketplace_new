@@ -1,5 +1,3 @@
-// backend/src/utils/jwt.ts
-
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET: string = process.env.JWT_SECRET || "jackman@Bonke";

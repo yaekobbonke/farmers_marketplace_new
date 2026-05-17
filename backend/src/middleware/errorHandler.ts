@@ -3,7 +3,6 @@ import { ZodError } from "zod";
 export function errorHandler(err: any, req: any, res: any, next: any) {
     console.error("[Backend Error]:", err.message || err);
 
-    // Check if it's a Zod Error
     if (err instanceof ZodError) {
         return res.status(400).json({
             success: false,

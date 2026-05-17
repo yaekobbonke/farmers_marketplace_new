@@ -602,7 +602,7 @@ export class ProductService {
     }
   }
 
-  // ✅ Get product analytics for farmer
+  // Get product analytics for farmer
   static async getProductAnalytics(userId: number, period: string = "week") {
     if (!userId || isNaN(userId)) {
       throw new Error("Invalid user ID");
