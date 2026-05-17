@@ -1,19 +1,48 @@
 import { Router } from "express";
 import { SearchController } from "./search.controller";
-import { authenticate } from "../../middleware/authMiddleware";
+import { authenticate, requireRole } from "../../middleware/authMiddleware";
 
 const router = Router();
 
-// Public routes
+/**
+ * PUBLIC ROUTES (No authentication required)
+ */
+
+// Basic search
 router.get("/", SearchController.search);
+
+// Search suggestions/autocomplete
+router.get("/suggestions", SearchController.getSearchSuggestions);
+
+// Advanced search with filters
+router.get("/advanced", SearchController.advancedSearch);
+
+// Trending searches globally
+router.get("/trending", SearchController.getTrendingSearches);
+
+// Product recommendations (personalized if user is logged in)
 router.get("/recommendations", SearchController.getRecommendations);
 
-router.get("/trending", SearchController.getTrendingSearches); // ✅ Add this
+// Similar products based on product ID
 router.get("/similar/:productId", SearchController.getSimilarProducts);
 
-// Protected routes (require authentication)
+/**
+ * PROTECTED ROUTES (Authentication required)
+ */
 router.use(authenticate);
+
+// User's search history
 router.get("/history", SearchController.getSearchHistory);
-router.post("/save", SearchController.saveSearch);
+
+// Save search to history
+router.post("/history", SearchController.saveSearch);
+
+// Clear all search history
+router.delete("/history", SearchController.clearSearchHistory);
+
+/**
+ * ADMIN ONLY ROUTES
+ */
+router.delete("/cache", requireRole("ADMIN"), SearchController.clearCache);
 
 export default router;

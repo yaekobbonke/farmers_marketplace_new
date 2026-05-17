@@ -1,12 +1,63 @@
+import { Readable } from 'stream';
 import { AssistantProvider } from "./assistant.provider";
 import prisma from "../../config/prisma";
+
+// Define interfaces for type safety
+interface Insight {
+  type: string;
+  message: string;
+  action: string;
+  link?: string;
+}
+
+interface ProductStat {
+  id: number;
+  name: string;
+  currentPrice: number;
+  avgPrice: number;
+  priceTrend: number;
+  trend: "up" | "down" | "stable";
+  quantity: number;
+  stockStatus: "healthy" | "low" | "critical";
+  isVerified: boolean;
+  views: number;
+  createdAt: Date;
+}
+
+interface FarmerInsightsResponse {
+  hasData: boolean;
+  message: string;
+  recommendation: string;
+  actionLink: string;
+  actionText: string;
+  topProduct: {
+    id: number;
+    name: string;
+    views: number;
+    price: number;
+    trend: string;
+  } | null;
+  pendingCount: number;
+  lowStockCount: number;
+  productCount?: number;
+  verifiedCount?: number;
+  insights: Insight[];
+}
+
+// Helper function to convert Decimal to number
+const toNumber = (value: any): number => {
+  if (value === null || value === undefined) return 0;
+  const num = Number(value);
+  return isNaN(num) ? 0 : num;
+};
 
 export class AssistantService {
   /**
    * The Service acts as the business logic layer.
    * In this case, it calls the Provider to initiate the stream from FastAPI.
+   * Returns Node.js Readable stream
    */
-  static async chat(query: string) {
+  static async chat(query: string): Promise<Readable | null> {
     // Validate input
     if (!query || typeof query !== 'string') {
       throw new Error('Invalid query: Query must be a non-empty string');
@@ -34,7 +85,7 @@ export class AssistantService {
   /**
    * Get AI-powered insights for farmer dashboard
    */
-  static async getFarmerInsights(userId: number) {
+  static async getFarmerInsights(userId: number): Promise<FarmerInsightsResponse> {
     try {
       // Validate user ID
       if (!userId || isNaN(userId)) {
@@ -68,28 +119,30 @@ export class AssistantService {
             {
               type: "info",
               message: "No products listed yet",
-              action: "Add Product"
+              action: "Add Product",
+              link: "/farmer/products/add"
             },
             {
               type: "info", 
               message: "Complete your profile",
-              action: "Update Profile"
+              action: "Update Profile",
+              link: "/profile"
             }
           ]
         };
       }
       
       // Convert Decimal to number for each product
-      const productStats = products.map(product => {
-        const currentPrice = Number(product.price);
-        const quantity = Number(product.quantity);
+      const productStats: ProductStat[] = products.map(product => {
+        const currentPrice = toNumber(product.price);
+        const quantity = toNumber(product.quantity);
         
         const avgPrice = product.priceHistories.length > 0
-          ? product.priceHistories.reduce((sum, p) => sum + Number(p.price), 0) / product.priceHistories.length
+          ? product.priceHistories.reduce((sum, p) => sum + toNumber(p.price), 0) / product.priceHistories.length
           : currentPrice;
         
         const priceTrend = product.priceHistories.length > 1
-          ? Number(product.priceHistories[0].price) - Number(product.priceHistories[product.priceHistories.length - 1].price)
+          ? toNumber(product.priceHistories[0].price) - toNumber(product.priceHistories[product.priceHistories.length - 1].price)
           : 0;
         
         let trend: "up" | "down" | "stable" = "stable";
@@ -110,7 +163,7 @@ export class AssistantService {
           quantity: quantity,
           stockStatus,
           isVerified: product.is_verified,
-          views: (product as any).views || 0,
+          views: product.views || 0,
           createdAt: product.createdAt
         };
       });
@@ -174,8 +227,8 @@ export class AssistantService {
         actionText = "Add New Product";
       }
       
-      // Generate additional insights list
-      const insightsList = [];
+      // Generate additional insights list - FIXED: Explicitly type the array
+      const insightsList: Insight[] = [];
       
       if (topProduct.views > 0) {
         insightsList.push({
@@ -272,7 +325,7 @@ export class AssistantService {
     }
   }
 
-  // ✅ ADD THIS - Get chat history for a user
+  // ✅ Get chat history for a user
   static async getChatHistory(userId: number, limit: number = 50) {
     try {
       // If you have a ChatHistory model, use it
@@ -296,7 +349,7 @@ export class AssistantService {
     }
   }
 
-  // ✅ ADD THIS - Save a chat message
+  // ✅ Save a chat message
   static async saveChatMessage(userId: number, query: string, response?: string) {
     try {
       // If you have a ChatHistory model, use it
@@ -325,7 +378,7 @@ export class AssistantService {
     }
   }
 
-  // ✅ ADD THIS - Get price forecast for a product
+  // ✅ Get price forecast for a product
   static async getPriceForecast(productId: number) {
     try {
       // Get product details
@@ -344,8 +397,8 @@ export class AssistantService {
       }
       
       // Calculate simple moving average
-      const prices = product.priceHistories.map(p => Number(p.price));
-      const currentPrice = Number(product.price);
+      const prices = product.priceHistories.map(p => toNumber(p.price));
+      const currentPrice = toNumber(product.price);
       
       let predictedPrice = currentPrice;
       let confidence = "medium";
@@ -388,7 +441,7 @@ export class AssistantService {
     }
   }
 
-  // ✅ ADD THIS - Get admin platform insights
+  // ✅ Get admin platform insights
   static async getAdminInsights() {
     try {
       const [totalUsers, totalProducts, totalOrders, totalRevenue] = await Promise.all([
@@ -420,7 +473,7 @@ export class AssistantService {
           totalUsers,
           totalProducts,
           totalOrders,
-          totalRevenue: totalRevenue._sum.totalAmount || 0
+          totalRevenue: toNumber(totalRevenue._sum.totalAmount)
         },
         pendingApprovals: {
           products: pendingProducts
@@ -444,3 +497,5 @@ export class AssistantService {
     }
   }
 }
+
+export default AssistantService;

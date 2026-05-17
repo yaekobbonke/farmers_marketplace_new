@@ -1,11 +1,139 @@
 import prisma from "../../config/prisma";
 import { NotificationService } from "../notifications/notification.service";
 
+// Define interfaces for type safety
+interface ProductData {
+  name: string;
+  description: string;
+  price: number;
+  quantity: number;
+  categoryId: number;
+  unit?: string;
+  location?: string;
+  tags?: string;
+}
+
+interface ProductAnalytics {
+  id: number;
+  name: string;
+  category: string;
+  currentPrice: number;
+  avgPrice: number;
+  priceTrend: "up" | "down" | "stable";
+  priceChange: string;
+  views: number;
+  sales: number;
+  revenue: number;
+  orderCount: number;
+  viewToSaleRatio: string;
+  stock: number;
+  stockStatus: "healthy" | "low" | "critical";
+  status: string;
+  priceHistory: { date: Date; price: number }[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface FarmerStats {
+  totalProducts: number;
+  pendingApproval: number;
+  approvedCount: number;
+  revenue: number;
+  lowStockCount: number;
+  totalOrders: number;
+  totalViews: number;
+  recentOrders: any[];
+}
+
+interface DailyData {
+  date: string;
+  productsCreated: number;
+  views: number;
+  label: string;
+}
+
+// Base product with all fields
+interface BaseProduct {
+  id: number;
+  name: string;
+  description: string;
+  price: number;
+  quantity: number;
+  unit: string | null;
+  location: string | null;
+  tags: string | null;
+  views: number;
+  is_verified: boolean;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+  farmerId: number;
+  categoryId: number;
+}
+
+// For marketplace and public routes
+interface ProductWithMinimalFarmer extends BaseProduct {
+  farmer: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    location: string | null;
+  };
+  category: {
+    id: number;
+    name: string;
+  } | null;
+}
+
+// For farmer's own products (includes price history)
+interface ProductWithPriceHistory extends BaseProduct {
+  category: {
+    id: number;
+    name: string;
+  } | null;
+  priceHistories: {
+    createdAt: Date;
+    price: number;
+  }[];
+}
+
+// For admin routes (full farmer details)
+interface ProductWithFullFarmer extends BaseProduct {
+  farmer: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string;
+    location: string | null;
+  };
+  category: {
+    id: number;
+    name: string;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null;
+  priceHistories?: {
+    createdAt: Date;
+    price: number;
+  }[];
+}
+
+// Union type for flexibility
+type ProductWithDetails = ProductWithMinimalFarmer | ProductWithPriceHistory | ProductWithFullFarmer;
+
+// Helper function to convert Decimal to number
+const toNumber = (value: any): number => {
+  if (value === null || value === undefined) return 0;
+  const num = Number(value);
+  return isNaN(num) ? 0 : num;
+};
+
 export class ProductService {
   
   // ✅ Get all verified products for marketplace
-  static async getAll() {
-    return prisma.product.findMany({
+  static async getAll(): Promise<ProductWithMinimalFarmer[]> {
+    const products = await prisma.product.findMany({
       where: { 
         status: "AVAILABLE",
         is_verified: true
@@ -23,10 +151,11 @@ export class ProductService {
       },
       orderBy: { createdAt: "desc" }
     });
+    return products as unknown as ProductWithMinimalFarmer[];
   }
 
   // ✅ Get single product by ID - with view tracking
-  static async getById(id: number, incrementView: boolean = false) {
+  static async getById(id: number, incrementView: boolean = false): Promise<ProductWithFullFarmer | null> {
     if (!id || isNaN(id)) {
       throw new Error("Invalid product ID");
     }
@@ -40,7 +169,7 @@ export class ProductService {
       });
     }
     
-    return prisma.product.findUnique({
+    const product = await prisma.product.findUnique({
       where: { id },
       include: {
         farmer: {
@@ -60,15 +189,16 @@ export class ProductService {
         }
       }
     });
+    return product as unknown as ProductWithFullFarmer | null;
   }
 
   // ✅ Get farmer's own products
-  static async getFarmerProducts(userId: number) {
+  static async getFarmerProducts(userId: number): Promise<ProductWithPriceHistory[]> {
     if (!userId || isNaN(userId)) {
       throw new Error("Invalid user ID");
     }
     
-    return prisma.product.findMany({
+    const products = await prisma.product.findMany({
       where: { farmerId: userId },
       include: {
         category: true,
@@ -79,10 +209,11 @@ export class ProductService {
       },
       orderBy: { createdAt: "desc" }
     });
+    return products as unknown as ProductWithPriceHistory[];
   }
 
   // ✅ Get farmer's dashboard stats
-  static async getFarmerStats(userId: number) {
+  static async getFarmerStats(userId: number): Promise<FarmerStats> {
     if (!userId || isNaN(userId)) {
       throw new Error("Invalid user ID");
     }
@@ -102,8 +233,8 @@ export class ProductService {
     const totalProducts = products.length;
     const pendingApproval = products.filter(p => !p.is_verified).length;
     const approvedCount = products.filter(p => p.is_verified).length;
-    const lowStockCount = products.filter(p => Number(p.quantity) < 10).length;
-    const inventoryValue = products.reduce((sum, p) => sum + (Number(p.price) * Number(p.quantity)), 0);
+    const lowStockCount = products.filter(p => toNumber(p.quantity) < 10).length;
+    const inventoryValue = products.reduce((sum, p) => sum + (toNumber(p.price) * toNumber(p.quantity)), 0);
     const totalViews = products.reduce((sum, p) => sum + (p.views || 0), 0);
     
     const totalOrders = await prisma.order.count({ 
@@ -145,13 +276,21 @@ export class ProductService {
   }
 
   // ✅ Create new product - with duplicate prevention
-  static async create(userId: number, data: any) {
+  static async create(userId: number, data: ProductData) {
     const product = await prisma.product.create({
       data: {
-        ...data,
+        name: data.name,
+        description: data.description,
+        price: data.price,
+        quantity: data.quantity,
+        categoryId: data.categoryId,
+        unit: data.unit || "piece",
+        location: data.location || null,
+        tags: data.tags || null,
         farmerId: userId,
         is_verified: false,
-        views: 0
+        views: 0,
+        status: "AVAILABLE"
       }
     });
     
@@ -179,7 +318,7 @@ export class ProductService {
   }
 
   // ✅ Update existing product - with duplicate prevention
-  static async update(id: number, userId: number, data: any, role?: string) {
+  static async update(id: number, userId: number, data: Partial<ProductData>, role?: string) {
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) throw new Error("Product not found");
     
@@ -251,8 +390,8 @@ export class ProductService {
   }
 
   // ✅ Get all products for admin
-  static async getAllProductsAdmin() {
-    return prisma.product.findMany({
+  static async getAllProductsAdmin(): Promise<ProductWithFullFarmer[]> {
+    const products = await prisma.product.findMany({
       include: {
         farmer: {
           select: {
@@ -268,11 +407,11 @@ export class ProductService {
       },
       orderBy: { createdAt: "desc" }
     });
+    return products as unknown as ProductWithFullFarmer[];
   }
 
   // ✅ Admin verify a product - WITH DUPLICATE PREVENTION
   static async verifyProduct(id: number) {
-    // Get product details before updating
     const product = await prisma.product.findUnique({
       where: { id },
       include: { farmer: true }
@@ -282,19 +421,16 @@ export class ProductService {
       throw new Error("Product not found");
     }
     
-    // ✅ Check if product is already verified
     if (product.is_verified) {
-      console.log(`⚠️ Product ${id} is already verified. Skipping duplicate verification.`);
+      console.log(`Product ${id} is already verified. Skipping duplicate verification.`);
       return product;
     }
     
-    // Update product to verified
     const verifiedProduct = await prisma.product.update({
       where: { id },
       data: { is_verified: true }
     });
     
-    // ✅ Check for duplicate notification within last minute
     const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
     const recentNotification = await prisma.notification.findFirst({
       where: {
@@ -319,7 +455,6 @@ export class ProductService {
     return verifiedProduct;
   }
 
-  // ✅ Admin reject a product - with duplicate prevention
   static async rejectProduct(id: number, reason?: string) {
     const product = await prisma.product.findUnique({
       where: { id },
@@ -336,7 +471,7 @@ export class ProductService {
     const recentNotification = await prisma.notification.findFirst({
       where: {
         userId: product.farmerId,
-        title: "❌ Product Not Approved",
+        title: "Product Not Approved",
         message: { contains: product.name },
         createdAt: { gte: oneMinuteAgo }
       }
@@ -345,7 +480,7 @@ export class ProductService {
     if (!recentNotification) {
       await NotificationService.createNotification({
         userId: product.farmerId,
-        title: "❌ Product Not Approved",
+        title: "Product Not Approved",
         message: reason 
           ? `Your product "${product.name}" was not approved. Reason: ${reason}`
           : `Your product "${product.name}" was not approved. Please review and resubmit.`,
@@ -356,12 +491,15 @@ export class ProductService {
     return rejectedProduct;
   }
 
-  // ✅ Admin feature a product - with duplicate prevention
   static async featureProduct(id: number) {
     const product = await prisma.product.findUnique({
       where: { id },
-      select: { tags: true, name: true, farmerId: true, is_featured: true }
+      select: { tags: true, name: true, farmerId: true }
     });
+    
+    if (!product) {
+      throw new Error("Product not found");
+    }
     
     const currentTags = product?.tags || "";
     const hasFeatured = currentTags.includes("featured");
@@ -371,11 +509,10 @@ export class ProductService {
     
     const featuredProduct = await prisma.product.update({
       where: { id },
-      data: { tags: newTags || null, is_featured: !hasFeatured }
+      data: { tags: newTags || null }
     });
     
-    // Send notification only when featuring (not unfeaturing) and no recent duplicate
-    if (product && !hasFeatured) {
+    if (!hasFeatured) {
       const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
       const recentNotification = await prisma.notification.findFirst({
         where: {
@@ -400,8 +537,8 @@ export class ProductService {
   }
 
   // ✅ Get products by category
-  static async getProductsByCategory(categoryId: number) {
-    return prisma.product.findMany({
+  static async getProductsByCategory(categoryId: number): Promise<ProductWithMinimalFarmer[]> {
+    const products = await prisma.product.findMany({
       where: {
         categoryId,
         status: "AVAILABLE",
@@ -419,15 +556,16 @@ export class ProductService {
       },
       orderBy: { createdAt: "desc" }
     });
+    return products as unknown as ProductWithMinimalFarmer[];
   }
 
   // ✅ Search products
-  static async searchProducts(query: string) {
+  static async searchProducts(query: string): Promise<ProductWithMinimalFarmer[]> {
     if (!query || query.trim() === "") {
       return [];
     }
     
-    return prisma.product.findMany({
+    const products = await prisma.product.findMany({
       where: {
         OR: [
           { name: { contains: query, mode: 'insensitive' } },
@@ -448,14 +586,16 @@ export class ProductService {
       },
       orderBy: { createdAt: "desc" }
     });
+    return products as unknown as ProductWithMinimalFarmer[];
   }
 
   // ✅ Get featured products
-  static async getFeaturedProducts(limit: number = 6) {
-    return prisma.product.findMany({
+  static async getFeaturedProducts(limit: number = 6): Promise<ProductWithMinimalFarmer[]> {
+    const products = await prisma.product.findMany({
       where: {
         status: "AVAILABLE",
-        is_verified: true
+        is_verified: true,
+        tags: { contains: "featured" }
       },
       include: {
         farmer: {
@@ -470,6 +610,7 @@ export class ProductService {
       orderBy: { createdAt: "desc" },
       take: limit
     });
+    return products as unknown as ProductWithMinimalFarmer[];
   }
 
   // ✅ Update product stock - with duplicate prevention
@@ -481,7 +622,8 @@ export class ProductService {
     
     if (!product) throw new Error("Product not found");
     
-    const newQuantity = Number(product.quantity) - quantitySold;
+    const currentQuantity = toNumber(product.quantity);
+    const newQuantity = currentQuantity - quantitySold;
     const newStatus = newQuantity <= 0 ? "SOLD_OUT" : "AVAILABLE";
     
     const updatedProduct = await prisma.product.update({
@@ -494,7 +636,6 @@ export class ProductService {
     
     const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
     
-    // Send low stock alert notification (with duplicate prevention)
     if (newQuantity < 10 && newQuantity > 0) {
       const recentNotification = await prisma.notification.findFirst({
         where: {
@@ -515,7 +656,6 @@ export class ProductService {
       }
     }
     
-    // Send out of stock notification (with duplicate prevention)
     if (newQuantity <= 0) {
       const recentNotification = await prisma.notification.findFirst({
         where: {
@@ -555,9 +695,9 @@ export class ProductService {
   }
 
   // ✅ Get top viewed products
-  static async getTopViewedProducts(limit: number = 10) {
+  static async getTopViewedProducts(limit: number = 10): Promise<ProductWithMinimalFarmer[]> {
     try {
-      return await prisma.product.findMany({
+      const products = await prisma.product.findMany({
         where: {
           is_verified: true,
           status: "AVAILABLE"
@@ -577,9 +717,10 @@ export class ProductService {
           category: true
         }
       });
+      return products as unknown as ProductWithMinimalFarmer[];
     } catch (error) {
       console.log("Views column not found, falling back to createdAt order");
-      return await prisma.product.findMany({
+      const products = await prisma.product.findMany({
         where: {
           is_verified: true,
           status: "AVAILABLE"
@@ -599,6 +740,7 @@ export class ProductService {
           category: true
         }
       });
+      return products as unknown as ProductWithMinimalFarmer[];
     }
   }
 
@@ -630,32 +772,32 @@ export class ProductService {
       orderBy: { createdAt: 'desc' }
     });
     
-    const productAnalytics = products.map(product => {
+    const productAnalytics: ProductAnalytics[] = products.map(product => {
       const priceHistory = product.priceHistories.map(p => ({
         date: p.createdAt,
-        price: Number(p.price)
+        price: toNumber(p.price)
       }));
       
       if (priceHistory.length === 0) {
         priceHistory.push({
           date: product.createdAt,
-          price: Number(product.price)
+          price: toNumber(product.price)
         });
       }
       
-      const firstPrice = priceHistory[0]?.price || Number(product.price);
-      const lastPrice = priceHistory[priceHistory.length - 1]?.price || Number(product.price);
+      const firstPrice = priceHistory[0]?.price || toNumber(product.price);
+      const lastPrice = priceHistory[priceHistory.length - 1]?.price || toNumber(product.price);
       let priceTrend: "up" | "down" | "stable" = "stable";
       if (lastPrice > firstPrice) priceTrend = "up";
       else if (lastPrice < firstPrice) priceTrend = "down";
       
       const priceChange = firstPrice > 0 ? ((lastPrice - firstPrice) / firstPrice) * 100 : 0;
       const totalSales = product.orderItems.reduce((sum, item) => sum + Number(item.quantity), 0);
-      const totalRevenue = product.orderItems.reduce((sum, item) => sum + (Number(item.unitPrice) * Number(item.quantity)), 0);
+      const totalRevenue = product.orderItems.reduce((sum, item) => sum + (toNumber(item.unitPrice) * Number(item.quantity)), 0);
       const orderCount = product.orderItems.length;
       const views = product.views || 0;
       const viewToSaleRatio = views > 0 ? (orderCount / views) * 100 : 0;
-      const currentStock = Number(product.quantity);
+      const currentStock = toNumber(product.quantity);
       let stockStatus: "healthy" | "low" | "critical" = "healthy";
       if (currentStock < 5) stockStatus = "critical";
       else if (currentStock < 10) stockStatus = "low";
@@ -664,7 +806,7 @@ export class ProductService {
         id: product.id,
         name: product.name,
         category: product.category?.name || "Uncategorized",
-        currentPrice: Number(product.price),
+        currentPrice: toNumber(product.price),
         avgPrice: priceHistory.reduce((sum, p) => sum + p.price, 0) / priceHistory.length,
         priceTrend,
         priceChange: priceChange.toFixed(1),
@@ -717,8 +859,8 @@ export class ProductService {
   }
 
   // ✅ Private helper method for daily view data
-  private static async generateDailyViewData(userId: number, days: number) {
-    const dailyData = [];
+  private static async generateDailyViewData(userId: number, days: number): Promise<DailyData[]> {
+    const dailyData: DailyData[] = [];
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
     
@@ -764,3 +906,5 @@ export class ProductService {
     return dailyData;
   }
 }
+
+export default ProductService;

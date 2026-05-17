@@ -1,9 +1,19 @@
 import { Request, Response } from "express";
 import { AnalyticsService } from "./analytics.service";
 
+// Extend Request to include user property
+interface AuthRequest extends Request {
+  user?: {
+    id: number;
+    email: string;
+    role: "FARMER" | "BUYER" | "ADMIN";
+    is_suspended?: boolean;
+  };
+}
+
 export class AnalyticsController {
   
-  static async getFarmerOverview(req: Request, res: Response) {
+  static async getFarmerOverview(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) {
@@ -18,7 +28,7 @@ export class AnalyticsController {
     }
   }
   
-  static async getFarmerProductAnalytics(req: Request, res: Response) {
+  static async getFarmerProductAnalytics(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) {
@@ -26,9 +36,13 @@ export class AnalyticsController {
       }
       
       const { period = "week" } = req.query;
-      // Validate period
-      if (!["week", "month", "year"].includes(period as string)) {
-        return res.status(400).json({ success: false, message: "Invalid period. Use week, month, or year" });
+      const validPeriods = ["week", "month", "year"];
+      
+      if (!validPeriods.includes(period as string)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Invalid period. Use week, month, or year" 
+        });
       }
       
       const analytics = await AnalyticsService.getFarmerProductAnalytics(userId, period as string);
@@ -39,7 +53,7 @@ export class AnalyticsController {
     }
   }
   
-  static async getFarmerSalesAnalytics(req: Request, res: Response) {
+  static async getFarmerSalesAnalytics(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) {
@@ -47,9 +61,13 @@ export class AnalyticsController {
       }
       
       const { period = "month" } = req.query;
-      // Validate period
-      if (!["week", "month", "year"].includes(period as string)) {
-        return res.status(400).json({ success: false, message: "Invalid period. Use week, month, or year" });
+      const validPeriods = ["week", "month", "year"];
+      
+      if (!validPeriods.includes(period as string)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Invalid period. Use week, month, or year" 
+        });
       }
       
       const analytics = await AnalyticsService.getFarmerSalesAnalytics(userId, period as string);
@@ -60,7 +78,7 @@ export class AnalyticsController {
     }
   }
   
-  static async getFarmerViewsAnalytics(req: Request, res: Response) {
+  static async getFarmerViewsAnalytics(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) {
@@ -75,11 +93,14 @@ export class AnalyticsController {
     }
   }
   
-  static async getAdminOverview(req: Request, res: Response) {
+  static async getAdminOverview(req: AuthRequest, res: Response) {
     try {
       // Check admin role
       if (req.user?.role !== "ADMIN") {
-        return res.status(403).json({ success: false, message: "Admin access required" });
+        return res.status(403).json({ 
+          success: false, 
+          message: "Admin access required" 
+        });
       }
       
       const overview = await AnalyticsService.getAdminOverview();
@@ -90,31 +111,45 @@ export class AnalyticsController {
     }
   }
   
-  static async getAdminProductAnalytics(req: Request, res: Response) {
+  static async getAdminProductAnalytics(req: AuthRequest, res: Response) {
     try {
       if (req.user?.role !== "ADMIN") {
-        return res.status(403).json({ success: false, message: "Admin access required" });
+        return res.status(403).json({ 
+          success: false, 
+          message: "Admin access required" 
+        });
       }
       
       const analytics = await AnalyticsService.getAdminProductAnalytics();
       res.json({ success: true, data: analytics });
     } catch (error: any) {
       console.error("Error fetching admin product analytics:", error.message);
-      res.status(500).json({ success: false, message: error.message || "Failed to fetch product analytics" });
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || "Failed to fetch product analytics" 
+      });
     }
   }
   
-  static async getAdminUserAnalytics(req: Request, res: Response) {
+  static async getAdminUserAnalytics(req: AuthRequest, res: Response) {
     try {
       if (req.user?.role !== "ADMIN") {
-        return res.status(403).json({ success: false, message: "Admin access required" });
+        return res.status(403).json({ 
+          success: false, 
+          message: "Admin access required" 
+        });
       }
       
       const analytics = await AnalyticsService.getAdminUserAnalytics();
       res.json({ success: true, data: analytics });
     } catch (error: any) {
       console.error("Error fetching admin user analytics:", error.message);
-      res.status(500).json({ success: false, message: error.message || "Failed to fetch user analytics" });
+      res.status(500).json({ 
+        success: false, 
+        message: error.message || "Failed to fetch user analytics" 
+      });
     }
   }
 }
+
+export default AnalyticsController;

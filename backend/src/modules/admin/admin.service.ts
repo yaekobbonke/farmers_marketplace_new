@@ -1,8 +1,70 @@
 import prisma from "../../config/prisma";
 import { formatTimeAgo } from "../../utils/dateUtils";
 
+// Helper function to safely convert any numeric value to number
+const toNumber = (value: any): number => {
+  if (value === null || value === undefined) return 0;
+  const num = Number(value);
+  return isNaN(num) ? 0 : num;
+};
+
+// Define interfaces for type safety
+interface SalesDataPoint {
+  date: string;
+  dateKey: string;
+  orders: number;
+  revenue: number;
+}
+
+interface SalesSummary {
+  totalOrders: number;
+  totalRevenue: number;
+  averageOrderValue: number;
+  peakDay: {
+    date: string;
+    revenue: number;
+    orders: number;
+  };
+  period: {
+    start: string;
+    end: string;
+    range: "week" | "month" | "year";
+  };
+}
+
+interface SalesResponse {
+  data: SalesDataPoint[];
+  summary: SalesSummary;
+}
+
+interface DashboardStats {
+  totalUsers: number;
+  totalProducts: number;
+  totalOrders: number;
+  totalRevenue: number;
+  pendingProducts: number;
+  activeProducts: number;
+  completedOrders: number;
+  pendingOrders: number;
+  monthlyRevenue: number;
+  revenueChange: number;
+  userGrowth: number;
+  orderGrowth: number;
+  productGrowth: number;
+}
+
+interface ActivityItem {
+  id: number;
+  type: "user" | "product" | "order";
+  action: string;
+  user: string;
+  time: string;
+  timestamp: Date;
+  status?: string;
+}
+
 export class AdminService {
-  static async getStats() {
+  static async getStats(): Promise<DashboardStats> {
     const [totalUsers, totalProducts, totalOrders, totalRevenue] = await Promise.all([
       prisma.user.count(),
       prisma.product.count(),
@@ -13,7 +75,6 @@ export class AdminService {
       })
     ]);
 
-    // Get additional stats
     const [activeProducts, pendingProducts, completedOrders, pendingOrders, monthlyRevenue] = await Promise.all([
       prisma.product.count({ where: { status: "AVAILABLE" } }),
       prisma.product.count({ where: { is_verified: false } }),
@@ -30,8 +91,7 @@ export class AdminService {
       })
     ]);
 
-    // Calculate growth percentages (mock - you can implement actual calculations)
-    const revenueChange = 12.5; // Example: 12.5% increase
+    const revenueChange = 12.5;
     const userGrowth = 8.3;
     const orderGrowth = 15.2;
     const productGrowth = 5.7;
@@ -40,12 +100,12 @@ export class AdminService {
       totalUsers,
       totalProducts,
       totalOrders,
-      totalRevenue: totalRevenue._sum.totalAmount || 0,
+      totalRevenue: toNumber(totalRevenue._sum.totalAmount),
       pendingProducts,
       activeProducts,
       completedOrders,
       pendingOrders,
-      monthlyRevenue: monthlyRevenue._sum.totalAmount || 0,
+      monthlyRevenue: toNumber(monthlyRevenue._sum.totalAmount),
       revenueChange,
       userGrowth,
       orderGrowth,
@@ -77,7 +137,6 @@ export class AdminService {
   }
 
   static async updateUserRole(userId: number, role: string) {
-    // Prevent demoting the last admin
     if (role !== "ADMIN") {
       const adminCount = await prisma.user.count({
         where: { role: "ADMIN" }
@@ -142,7 +201,6 @@ export class AdminService {
   }
 
   static async deleteUser(userId: number) {
-    // Prevent deleting the last admin
     const targetUser = await prisma.user.findUnique({
       where: { id: userId },
       select: { role: true }
@@ -170,10 +228,8 @@ export class AdminService {
     });
   }
 
-  // ✅ Add getRecentActivity method
-  static async getRecentActivity() {
+  static async getRecentActivity(): Promise<ActivityItem[]> {
     try {
-      // Fetch recent users
       const recentUsers = await prisma.user.findMany({
         take: 5,
         orderBy: { createdAt: 'desc' },
@@ -185,7 +241,6 @@ export class AdminService {
         }
       });
       
-      // Fetch recent products
       const recentProducts = await prisma.product.findMany({
         take: 5,
         orderBy: { createdAt: 'desc' },
@@ -199,7 +254,6 @@ export class AdminService {
         }
       });
       
-      // Fetch recent orders
       const recentOrders = await prisma.order.findMany({
         take: 5,
         orderBy: { createdAt: 'desc' },
@@ -213,8 +267,7 @@ export class AdminService {
         }
       });
       
-      // Combine and format activities
-      const activity = [
+      const activity: ActivityItem[] = [
         ...recentUsers.map(u => ({
           id: u.id,
           type: "user" as const,
@@ -250,9 +303,7 @@ export class AdminService {
     }
   }
 
-
-  // ✅ Add getSalesData method
-  static async getSalesData(range: "week" | "month" | "year" = "month") {
+  static async getSalesData(range: "week" | "month" | "year" = "month"): Promise<SalesResponse> {
     try {
       const days = range === "week" ? 7 : range === "year" ? 365 : 30;
       
@@ -260,7 +311,6 @@ export class AdminService {
       startDate.setDate(startDate.getDate() - days);
       startDate.setHours(0, 0, 0, 0);
       
-      // Fetch all completed orders within the date range
       const orders = await prisma.order.findMany({
         where: {
           createdAt: { gte: startDate },
@@ -274,10 +324,8 @@ export class AdminService {
         orderBy: { createdAt: 'asc' }
       });
       
-      // Group orders by date
       const ordersByDate = new Map<string, { orders: number; revenue: number }>();
       
-      // Initialize all dates in range
       for (let i = 0; i < days; i++) {
         const date = new Date(startDate);
         date.setDate(date.getDate() + i);
@@ -285,19 +333,17 @@ export class AdminService {
         ordersByDate.set(dateKey, { orders: 0, revenue: 0 });
       }
       
-      // Aggregate orders by date
       orders.forEach(order => {
         const dateKey = order.createdAt.toISOString().split('T')[0];
         const existing = ordersByDate.get(dateKey);
         if (existing) {
           existing.orders += 1;
-          existing.revenue += Number(order.totalAmount);
+          existing.revenue += toNumber(order.totalAmount);
           ordersByDate.set(dateKey, existing);
         }
       });
       
-      // Format sales data for response
-      const salesData = [];
+      const salesData: SalesDataPoint[] = [];
       for (let i = 0; i < days; i++) {
         const date = new Date(startDate);
         date.setDate(date.getDate() + i);
@@ -321,10 +367,31 @@ export class AdminService {
         });
       }
       
-      // Calculate summary statistics
       const totalOrders = salesData.reduce((sum, d) => sum + d.orders, 0);
       const totalRevenue = salesData.reduce((sum, d) => sum + d.revenue, 0);
       const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+      
+      if (salesData.length === 0) {
+        return {
+          data: [],
+          summary: {
+            totalOrders: 0,
+            totalRevenue: 0,
+            averageOrderValue: 0,
+            peakDay: {
+              date: '',
+              revenue: 0,
+              orders: 0
+            },
+            period: {
+              start: startDate.toISOString().split('T')[0],
+              end: new Date().toISOString().split('T')[0],
+              range
+            }
+          }
+        };
+      }
+      
       const peakDay = salesData.reduce((max, d) => d.revenue > max.revenue ? d : max, salesData[0]);
       
       return {
@@ -350,7 +417,7 @@ export class AdminService {
       throw new Error("Failed to fetch sales data");
     }
   }
-  // Get all products with farmer details
+  
   static async getAllProducts() {
     return prisma.product.findMany({
       include: {
@@ -370,7 +437,6 @@ export class AdminService {
     });
   }
 
-  // ✅ Verify a product
   static async verifyProduct(productId: number) {
     return prisma.product.update({
       where: { id: productId },
@@ -387,10 +453,7 @@ export class AdminService {
     });
   }
 
-  // ✅ Feature a product (add to featured list)
   static async featureProduct(productId: number) {
-    // You may need to add a 'is_featured' field to your Product model
-    // For now, we can add a 'featured' tag
     const product = await prisma.product.findUnique({
       where: { id: productId }
     });
@@ -407,10 +470,11 @@ export class AdminService {
     });
   }
 
-  // ✅ Delete a product
   static async deleteProduct(productId: number) {
     return prisma.product.delete({
       where: { id: productId }
     });
   }
 }
+
+export default AdminService;

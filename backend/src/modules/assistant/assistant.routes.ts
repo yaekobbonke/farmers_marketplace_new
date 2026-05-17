@@ -10,7 +10,6 @@ router.post("/chat", AssistantController.chat);
 
 router.use(authenticate);
 
-
 router.get("/insights", AssistantController.getFarmerInsights);
 
 // Admin insights (optional - for admin dashboard)

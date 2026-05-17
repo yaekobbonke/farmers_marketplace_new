@@ -17,6 +17,23 @@ interface SettingsData {
   theme: string;
 }
 
+interface SystemSetting {
+  id: number;
+  key: string;
+  value: string;
+  type: string;
+  description: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface SettingInput {
+  key: string;
+  value: string;
+  type: string;
+  description?: string;
+}
+
 export class AdminSettingsService {
   
   static async getSettings(): Promise<SettingsData> {
@@ -44,7 +61,7 @@ export class AdminSettingsService {
   }
   
   static async updateSettings(data: Partial<SettingsData>): Promise<SettingsData> {
-    const operations = [];
+    const operations: Promise<any>[] = [];
     
     for (const [key, value] of Object.entries(data)) {
       let stringValue: string;
@@ -56,16 +73,18 @@ export class AdminSettingsService {
       } else if (typeof value === 'number') {
         stringValue = String(value);
         type = 'number';
-      } else {
-        stringValue = String(value);
+      } else if (typeof value === 'string') {
+        stringValue = value;
         type = 'string';
+      } else {
+        continue; // Skip invalid values
       }
       
       operations.push(
         prisma.systemSetting.upsert({
           where: { key },
           update: { value: stringValue, type },
-          create: { key, value: stringValue, type }
+          create: { key, value: stringValue, type, description: null }
         })
       );
     }
@@ -75,6 +94,7 @@ export class AdminSettingsService {
     // Clear cache if needed
     if (data.maintenanceMode !== undefined) {
       // You could emit an event here
+      console.log("Maintenance mode changed:", data.maintenanceMode);
     }
     
     return this.getSettings();
@@ -91,11 +111,11 @@ export class AdminSettingsService {
     await prisma.systemSetting.upsert({
       where: { key },
       update: { value },
-      create: { key, value }
+      create: { key, value, type: 'string', description: null }
     });
   }
   
-  private static getValue(map: Map<string, any>, key: string, defaultValue: string): string {
+  private static getValue(map: Map<string, SystemSetting>, key: string, defaultValue: string): string {
     const setting = map.get(key);
     return setting?.value || defaultValue;
   }
@@ -106,7 +126,7 @@ export class AdminSettingsService {
   }
   
   static async seedDefaultSettings(): Promise<void> {
-    const defaultSettings = [
+    const defaultSettings: SettingInput[] = [
       { key: 'siteName', value: 'AgriSmart', type: 'string', description: 'Site name' },
       { key: 'siteDescription', value: 'AI-Powered Agricultural Marketplace', type: 'string', description: 'Site description' },
       { key: 'contactEmail', value: 'support@agrismart.com', type: 'string', description: 'Contact email' },
@@ -124,11 +144,49 @@ export class AdminSettingsService {
     ];
     
     for (const setting of defaultSettings) {
-      await prisma.systemSetting.upsert({
-        where: { key: setting.key },
-        update: {},
-        create: setting
-      });
+      try {
+        await prisma.systemSetting.upsert({
+          where: { key: setting.key },
+          update: {
+            value: setting.value,
+            type: setting.type,
+            description: setting.description || null
+          },
+          create: {
+            key: setting.key,
+            value: setting.value,
+            type: setting.type,
+            description: setting.description || null
+          }
+        });
+      } catch (error) {
+        console.error(`Failed to seed setting ${setting.key}:`, error);
+        // Continue with other settings
+      }
+    }
+    
+    console.log("Default settings seeded successfully");
+  }
+  
+  // Helper method to get a typed setting value
+  static async getTypedSetting<T = string>(key: string, defaultValue: T): Promise<T> {
+    const setting = await prisma.systemSetting.findUnique({
+      where: { key }
+    });
+    
+    if (!setting) {
+      return defaultValue;
+    }
+    
+    switch (setting.type) {
+      case 'boolean':
+        return (setting.value === 'true') as T;
+      case 'number':
+        return parseFloat(setting.value) as T;
+      default:
+        return setting.value as T;
     }
   }
 }
+
+export default AdminSettingsService;

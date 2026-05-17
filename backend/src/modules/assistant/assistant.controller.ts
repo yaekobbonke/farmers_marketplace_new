@@ -1,8 +1,18 @@
 import { Request, Response } from "express";
 import { AssistantService } from "./assistant.service";
 
+// Extend Request to include user property
+interface AuthRequest extends Request {
+  user?: {
+    id: number;
+    email: string;
+    role: "FARMER" | "BUYER" | "ADMIN";
+    is_suspended?: boolean;
+  };
+}
+
 export class AssistantController {
-  static async chat(req: Request, res: Response) {
+  static async chat(req: AuthRequest, res: Response) {
     // 1. DEBUGGING: Check what Express actually sees
     console.log("--- 📥 Incoming AI Request ---");
     console.log("Content-Type:", req.headers["content-type"]);
@@ -42,6 +52,15 @@ export class AssistantController {
 
     try {
       const stream = await AssistantService.chat(sanitizedQuery);
+
+      // FIX: Check if stream is null
+      if (!stream) {
+        console.error("❌ Error: Received null stream from AssistantService");
+        return res.status(503).json({ 
+          success: false, 
+          message: "AI service is currently unavailable. Please try again later." 
+        });
+      }
 
       // Set streaming headers
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -101,7 +120,7 @@ export class AssistantController {
 
       // Handle client disconnect
       req.on('close', () => {
-        if (!isStreamEnded && !stream.destroyed) {
+        if (!isStreamEnded && stream && !stream.destroyed) {
           console.log("⚠️ Client disconnected, destroying stream");
           isStreamEnded = true;
           stream.destroy();
@@ -110,7 +129,7 @@ export class AssistantController {
 
       // Optional: Handle response finish
       res.on('finish', () => {
-        if (!isStreamEnded && !stream.destroyed) {
+        if (!isStreamEnded && stream && !stream.destroyed) {
           console.log("Response finished, cleaning up stream");
           stream.destroy();
         }
@@ -185,7 +204,7 @@ export class AssistantController {
     }
   }
 
-  static async getFarmerInsights(req: Request, res: Response) {
+  static async getFarmerInsights(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       
@@ -233,8 +252,8 @@ export class AssistantController {
     }
   }
 
-  //Get admin insights
-  static async getAdminInsights(req: Request, res: Response) {
+  // Get admin insights
+  static async getAdminInsights(req: AuthRequest, res: Response) {
     try {
       const userRole = req.user?.role;
       
@@ -245,27 +264,7 @@ export class AssistantController {
         });
       }
       
-      // You can implement admin-specific insights here
-      const insights = {
-        platformStats: {
-          totalUsers: 0,
-          totalProducts: 0,
-          totalOrders: 0,
-          totalRevenue: 0
-        },
-        pendingApprovals: {
-          products: 0,
-          farmers: 0
-        },
-        insights: [
-          {
-            type: "info",
-            message: "Admin dashboard ready",
-            action: "View Dashboard",
-            link: "/admin/dashboard"
-          }
-        ]
-      };
+      const insights = await AssistantService.getAdminInsights();
       
       return res.status(200).json({
         success: true,
@@ -280,7 +279,8 @@ export class AssistantController {
       });
     }
   }
-  static async getChatHistory(req: Request, res: Response) {
+
+  static async getChatHistory(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       
@@ -307,8 +307,8 @@ export class AssistantController {
     }
   }
 
-  // ✅ ADD THIS - Save chat message
-  static async saveChatMessage(req: Request, res: Response) {
+  // ✅ Save chat message
+  static async saveChatMessage(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       const { query, response } = req.body;
@@ -344,7 +344,7 @@ export class AssistantController {
     }
   }
 
-  // ✅ ADD THIS - Get price forecast
+  // ✅ Get price forecast
   static async getPriceForecast(req: Request, res: Response) {
     try {
       const productId = parseInt(req.params.productId);
@@ -372,3 +372,5 @@ export class AssistantController {
     }
   }
 }
+
+export default AssistantController;

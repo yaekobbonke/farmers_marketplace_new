@@ -1,8 +1,159 @@
 import prisma from "../../config/prisma";
 
+// Define interfaces for type safety
+interface DailyView {
+  date: string;
+  views: number;
+  label?: string;
+}
+
+interface DailyRegistration {
+  date: string;
+  count: number;
+  label: string;
+}
+
+interface SalesDataPoint {
+  date: string;
+  revenue: number;
+  orders: number;
+  label: string;
+}
+
+interface PriceHistoryPoint {
+  date: Date;
+  price: number;
+}
+
+interface ProductAnalytics {
+  id: number;
+  name: string;
+  currentPrice: number;
+  avgPrice: number;
+  views: number;
+  sales: number;
+  revenue: number;
+  stock: number;
+  status: string;
+  category: string;
+  trend: "up" | "down" | "stable";
+  priceHistory: PriceHistoryPoint[];
+}
+
+interface SalesAnalytics {
+  totalRevenue: number;
+  totalOrders: number;
+  averageOrderValue: number;
+  revenueGrowth: string;
+  salesData: SalesDataPoint[];
+  recentOrders: {
+    id: number;
+    buyerName: string;
+    amount: number;
+    date: Date;
+    status: string;
+  }[];
+}
+
+interface ViewAnalytics {
+  totalViews: number;
+  dailyViews: DailyView[];
+  topProduct: {
+    id: number;
+    name: string;
+    views: number;
+    price: number;
+  } | null;
+  products: {
+    id: number;
+    name: string;
+    views: number;
+    price: number;
+  }[];
+}
+
+interface AdminOverview {
+  totalUsers: number;
+  totalProducts: number;
+  totalOrders: number;
+  totalRevenue: number;
+  pendingProducts: number;
+  recentOrders: {
+    id: number;
+    buyerName: string;
+    amount: number;
+    date: Date;
+    status: string;
+  }[];
+}
+
+interface AdminProductAnalytics {
+  totalProducts: number;
+  verifiedCount: number;
+  pendingCount: number;
+  totalValue: number;
+  averagePrice: number;
+  productsByCategory: Record<string, number>;
+  products: {
+    id: number;
+    name: string;
+    price: number;
+    isVerified: boolean;
+    farmer: string;
+    category: string | null;
+    orders: number;
+    createdAt: Date;
+  }[];
+}
+
+interface AdminUserAnalytics {
+  totalUsers: number;
+  farmers: number;
+  buyers: number;
+  admins: number;
+  activeUsers: number;
+  dailyRegistrations: DailyRegistration[];
+  users: {
+    id: number;
+    name: string;
+    email: string;
+    role: string;
+    isActive: boolean;
+    products: number;
+    orders: number;
+    joinedAt: Date;
+  }[];
+}
+
+interface FarmerOverview {
+  totalProducts: number;
+  totalViews: number;
+  verifiedProducts: number;
+  pendingProducts: number;
+  avgPrice: number;
+  productGrowth: string;
+  viewGrowth: number;
+  trend: string;
+  dailyViews: DailyView[];
+  topProduct: {
+    id: number;
+    name: string;
+    views: number;
+    price: number;
+  } | null;
+  products: any[];
+}
+
+// Helper function to convert Decimal to number
+const toNumber = (value: any): number => {
+  if (value === null || value === undefined) return 0;
+  const num = Number(value);
+  return isNaN(num) ? 0 : num;
+};
+
 export class AnalyticsService {
   
-  static async getFarmerOverview(userId: number) {
+  static async getFarmerOverview(userId: number): Promise<FarmerOverview> {
     const products = await prisma.product.findMany({
       where: { farmerId: userId },
       include: {
@@ -18,7 +169,7 @@ export class AnalyticsService {
     const verifiedProducts = products.filter(p => p.is_verified).length;
     const pendingProducts = products.filter(p => !p.is_verified).length;
     const avgPrice = totalProducts > 0 
-      ? products.reduce((sum, p) => sum + Number(p.price), 0) / totalProducts 
+      ? products.reduce((sum, p) => sum + toNumber(p.price), 0) / totalProducts 
       : 0;
     
     // Calculate trends
@@ -31,8 +182,8 @@ export class AnalyticsService {
     const viewGrowth = totalViews > 0 ? 12.5 : 0;
     const trend = last7Days.length > 0 ? "+12%" : "0%";
     
-    // Generate daily views for chart
-    const dailyViews = [];
+    // Generate daily views for chart - FIXED: Explicitly type the array
+    const dailyViews: DailyView[] = [];
     for (let i = 6; i >= 0; i--) {
       const date = new Date();
       date.setDate(date.getDate() - i);
@@ -47,7 +198,7 @@ export class AnalyticsService {
           id: products[0].id, 
           name: products[0].name, 
           views: products[0].views || 0,
-          price: Number(products[0].price)
+          price: toNumber(products[0].price)
         }
       : null;
     
@@ -66,7 +217,7 @@ export class AnalyticsService {
     };
   }
   
-  static async getFarmerProductAnalytics(userId: number, period: string = "week") {
+  static async getFarmerProductAnalytics(userId: number, period: string = "week"): Promise<ProductAnalytics[]> {
     const days = period === "week" ? 7 : period === "month" ? 30 : 365;
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
@@ -91,38 +242,38 @@ export class AnalyticsService {
     });
     
     return products.map(product => {
-      const priceHistory = product.priceHistories.map(p => ({
+      const priceHistory: PriceHistoryPoint[] = product.priceHistories.map(p => ({
         date: p.createdAt,
-        price: Number(p.price)
+        price: toNumber(p.price)
       }));
       
       // Add current price if no history
       if (priceHistory.length === 0) {
         priceHistory.push({
           date: product.createdAt,
-          price: Number(product.price)
+          price: toNumber(product.price)
         });
       }
       
-      const firstPrice = priceHistory[0]?.price || Number(product.price);
-      const lastPrice = priceHistory[priceHistory.length - 1]?.price || Number(product.price);
+      const firstPrice = priceHistory[0]?.price || toNumber(product.price);
+      const lastPrice = priceHistory[priceHistory.length - 1]?.price || toNumber(product.price);
       
       let trend: "up" | "down" | "stable" = "stable";
       if (lastPrice > firstPrice) trend = "up";
       else if (lastPrice < firstPrice) trend = "down";
       
       const totalSales = product.orderItems.reduce((sum, item) => sum + Number(item.quantity), 0);
-      const totalRevenue = product.orderItems.reduce((sum, item) => sum + (Number(item.unitPrice) * Number(item.quantity)), 0);
+      const totalRevenue = product.orderItems.reduce((sum, item) => sum + (toNumber(item.unitPrice) * Number(item.quantity)), 0);
       
       return {
         id: product.id,
         name: product.name,
-        currentPrice: Number(product.price),
+        currentPrice: toNumber(product.price),
         avgPrice: priceHistory.reduce((sum, p) => sum + p.price, 0) / priceHistory.length,
         views: product.views || 0,
         sales: totalSales,
         revenue: totalRevenue,
-        stock: Number(product.quantity),
+        stock: toNumber(product.quantity),
         status: product.is_verified ? "verified" : "pending",
         category: product.category?.name || "Uncategorized",
         trend,
@@ -131,7 +282,7 @@ export class AnalyticsService {
     });
   }
   
-  static async getFarmerSalesAnalytics(userId: number, period: string = "month") {
+  static async getFarmerSalesAnalytics(userId: number, period: string = "month"): Promise<SalesAnalytics> {
     const days = period === "week" ? 7 : period === "month" ? 30 : 365;
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
@@ -170,7 +321,7 @@ export class AnalyticsService {
     
     orders.forEach(order => {
       const dateKey = order.createdAt.toISOString().split('T')[0];
-      const revenue = order.orderItems.reduce((sum, item) => sum + (Number(item.unitPrice) * Number(item.quantity)), 0);
+      const revenue = order.orderItems.reduce((sum, item) => sum + (toNumber(item.unitPrice) * Number(item.quantity)), 0);
       
       const existing = salesByDate.get(dateKey);
       if (existing) {
@@ -180,7 +331,7 @@ export class AnalyticsService {
       }
     });
     
-    const salesData = Array.from(salesByDate.entries()).map(([date, data]) => ({
+    const salesData: SalesDataPoint[] = Array.from(salesByDate.entries()).map(([date, data]) => ({
       date,
       revenue: data.revenue,
       orders: data.orders,
@@ -207,14 +358,14 @@ export class AnalyticsService {
       recentOrders: orders.slice(-10).reverse().map(order => ({
         id: order.id,
         buyerName: `${order.buyer?.first_name || ''} ${order.buyer?.last_name || ''}`.trim(),
-        amount: order.orderItems.reduce((sum, item) => sum + (Number(item.unitPrice) * Number(item.quantity)), 0),
+        amount: order.orderItems.reduce((sum, item) => sum + (toNumber(item.unitPrice) * Number(item.quantity)), 0),
         date: order.createdAt,
         status: order.status
       }))
     };
   }
   
-  static async getFarmerViewsAnalytics(userId: number) {
+  static async getFarmerViewsAnalytics(userId: number): Promise<ViewAnalytics> {
     const products = await prisma.product.findMany({
       where: { farmerId: userId },
       select: {
@@ -230,8 +381,8 @@ export class AnalyticsService {
     const totalViews = products.reduce((sum, p) => sum + (p.views || 0), 0);
     const topProduct = products.length > 0 ? products[0] : null;
     
-    // Generate daily views for the last 30 days
-    const dailyViews = [];
+    // Generate daily views for the last 30 days - FIXED: Explicitly type the array
+    const dailyViews: DailyView[] = [];
     for (let i = 29; i >= 0; i--) {
       const date = new Date();
       date.setDate(date.getDate() - i);
@@ -257,18 +408,18 @@ export class AnalyticsService {
         id: topProduct.id,
         name: topProduct.name,
         views: topProduct.views || 0,
-        price: Number(topProduct.price)
+        price: toNumber(topProduct.price)
       } : null,
       products: products.map(p => ({
         id: p.id,
         name: p.name,
         views: p.views || 0,
-        price: Number(p.price)
+        price: toNumber(p.price)
       }))
     };
   }
   
-  static async getAdminOverview() {
+  static async getAdminOverview(): Promise<AdminOverview> {
     const [totalUsers, totalProducts, totalOrders, totalRevenue] = await Promise.all([
       prisma.user.count(),
       prisma.product.count(),
@@ -295,19 +446,19 @@ export class AnalyticsService {
       totalUsers,
       totalProducts,
       totalOrders,
-      totalRevenue: totalRevenue._sum.totalAmount || 0,
+      totalRevenue: toNumber(totalRevenue._sum.totalAmount),
       pendingProducts,
       recentOrders: recentOrders.map(order => ({
         id: order.id,
         buyerName: `${order.buyer?.first_name || ''} ${order.buyer?.last_name || ''}`.trim(),
-        amount: Number(order.totalAmount),
+        amount: toNumber(order.totalAmount),
         date: order.createdAt,
         status: order.status
       }))
     };
   }
   
-  static async getAdminProductAnalytics() {
+  static async getAdminProductAnalytics(): Promise<AdminProductAnalytics> {
     const products = await prisma.product.findMany({
       include: {
         farmer: { select: { first_name: true, last_name: true, email: true } },
@@ -319,7 +470,7 @@ export class AnalyticsService {
     
     const verifiedCount = products.filter(p => p.is_verified).length;
     const pendingCount = products.filter(p => !p.is_verified).length;
-    const totalValue = products.reduce((sum, p) => sum + Number(p.price), 0);
+    const totalValue = products.reduce((sum, p) => sum + toNumber(p.price), 0);
     
     // Products by category
     const productsByCategory = products.reduce((acc, p) => {
@@ -338,17 +489,17 @@ export class AnalyticsService {
       products: products.map(p => ({
         id: p.id,
         name: p.name,
-        price: Number(p.price),
+        price: toNumber(p.price),
         isVerified: p.is_verified,
         farmer: `${p.farmer.first_name} ${p.farmer.last_name}`,
-        category: p.category?.name,
+        category: p.category?.name ?? null, // FIX: Convert undefined to null
         orders: p._count.orderItems,
         createdAt: p.createdAt
       }))
     };
   }
   
-  static async getAdminUserAnalytics() {
+  static async getAdminUserAnalytics(): Promise<AdminUserAnalytics> {
     const users = await prisma.user.findMany({
       include: {
         _count: {
@@ -363,13 +514,11 @@ export class AnalyticsService {
     const admins = users.filter(u => u.role === "ADMIN").length;
     const activeUsers = users.filter(u => u.isActive).length;
     
-    // User registration trend (last 30 days)
-    const dailyRegistrations = [];
+    // User registration trend (last 30 days) - FIXED: Explicitly type the array
+    const dailyRegistrations: DailyRegistration[] = [];
     for (let i = 29; i >= 0; i--) {
       const date = new Date();
       date.setDate(date.getDate() - i);
-      const nextDate = new Date(date);
-      nextDate.setDate(nextDate.getDate() + 1);
       const dateStr = date.toISOString().split('T')[0];
       
       const count = users.filter(u => {
@@ -404,3 +553,5 @@ export class AnalyticsService {
     };
   }
 }
+
+export default AnalyticsService;

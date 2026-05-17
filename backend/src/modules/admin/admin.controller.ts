@@ -2,6 +2,16 @@ import { Request, Response } from "express";
 import { AdminService } from "./admin.service";
 import { ProductService } from "../products/product.service";
 
+// Extend Request to include user property
+interface AuthRequest extends Request {
+  user?: {
+    id: number;
+    email: string;
+    role: "FARMER" | "BUYER" | "ADMIN";
+    is_suspended?: boolean;
+  };
+}
+
 export class AdminController {
   static async getStats(req: Request, res: Response) {
     try {
@@ -28,6 +38,13 @@ export class AdminController {
       const userId = parseInt(req.params.userId);
       const { role } = req.body;
       
+      if (isNaN(userId)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Invalid user ID" 
+        });
+      }
+      
       if (!role || !["ADMIN", "FARMER", "BUYER"].includes(role)) {
         return res.status(400).json({ 
           success: false, 
@@ -52,6 +69,13 @@ export class AdminController {
       const userId = parseInt(req.params.userId);
       const { isSuspended } = req.body;
       
+      if (isNaN(userId)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Invalid user ID" 
+        });
+      }
+      
       if (isSuspended === undefined) {
         return res.status(400).json({ 
           success: false, 
@@ -74,6 +98,14 @@ export class AdminController {
   static async suspendUser(req: Request, res: Response) {
     try {
       const userId = parseInt(req.params.userId);
+      
+      if (isNaN(userId)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Invalid user ID" 
+        });
+      }
+      
       const updated = await AdminService.suspendUser(userId);
       res.json({ success: true, data: updated, message: "User suspended successfully" });
     } catch (error: any) {
@@ -85,6 +117,14 @@ export class AdminController {
   static async unsuspendUser(req: Request, res: Response) {
     try {
       const userId = parseInt(req.params.userId);
+      
+      if (isNaN(userId)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Invalid user ID" 
+        });
+      }
+      
       const updated = await AdminService.unsuspendUser(userId);
       res.json({ success: true, data: updated, message: "User unsuspended successfully" });
     } catch (error: any) {
@@ -96,8 +136,16 @@ export class AdminController {
   static async deleteUser(req: Request, res: Response) {
     try {
       const userId = parseInt(req.params.userId);
+      const authReq = req as AuthRequest;
+      const currentAdminId = authReq.user?.id;
       
-      const currentAdminId = req.user?.id;
+      if (isNaN(userId)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Invalid user ID" 
+        });
+      }
+      
       if (currentAdminId === userId) {
         return res.status(400).json({ 
           success: false, 
@@ -130,7 +178,11 @@ export class AdminController {
   static async getSalesData(req: Request, res: Response) {
     try {
       const { range } = req.query;
-      const validRange = range === "week" || range === "year" ? range : "month";
+      let validRange: "week" | "month" | "year" = "month";
+      
+      if (range === "week" || range === "year") {
+        validRange = range;
+      }
       
       const salesData = await AdminService.getSalesData(validRange);
       
@@ -217,12 +269,20 @@ export class AdminController {
   static async deleteProduct(req: Request, res: Response) {
     try {
       const productId = parseInt(req.params.productId);
-      const adminId = req.user?.id;
+      const authReq = req as AuthRequest;
+      const adminId = authReq.user?.id;
       
       if (isNaN(productId)) {
         return res.status(400).json({ 
           success: false, 
           message: "Invalid product ID" 
+        });
+      }
+      
+      if (!adminId) {
+        return res.status(401).json({ 
+          success: false, 
+          message: "Not authenticated" 
         });
       }
       
