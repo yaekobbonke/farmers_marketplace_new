@@ -13,6 +13,7 @@ class AuthController {
             if (error.message === "USER_ALREADY_EXISTS") {
                 return res.status(409).json({ success: false, message: "User already exists" });
             }
+            console.error("Registration error:", error);
             res.status(500).json({ success: false, message: error.message });
         }
     }
@@ -26,6 +27,10 @@ class AuthController {
             if (error.message === "INVALID_CREDENTIALS") {
                 return res.status(401).json({ success: false, message: "Invalid email or password" });
             }
+            if (error.message === "ACCOUNT_SUSPENDED") {
+                return res.status(403).json({ success: false, message: "Your account has been suspended. Please contact support." });
+            }
+            console.error("Login error:", error);
             res.status(500).json({ success: false, message: error.message });
         }
     }
@@ -43,6 +48,7 @@ class AuthController {
             if (error.message === "USER_NOT_FOUND") {
                 return res.status(404).json({ success: false, message: "User not found" });
             }
+            console.error("Get profile error:", error);
             res.status(500).json({ success: false, message: error.message });
         }
     }
@@ -63,6 +69,7 @@ class AuthController {
             res.json({ success: true, data: updated });
         }
         catch (error) {
+            console.error("Update profile error:", error);
             res.status(500).json({ success: false, message: error.message });
         }
     }
@@ -90,6 +97,7 @@ class AuthController {
             if (error.message === "USER_NOT_FOUND") {
                 return res.status(404).json({ success: false, message: "User not found" });
             }
+            console.error("Change password error:", error);
             res.status(500).json({ success: false, message: error.message });
         }
     }
@@ -117,6 +125,7 @@ class AuthController {
             if (error.message === "CANNOT_DELETE_LAST_ADMIN") {
                 return res.status(403).json({ success: false, message: "Cannot delete the last admin account" });
             }
+            console.error("Delete account error:", error);
             res.status(500).json({ success: false, message: error.message });
         }
     }
@@ -138,6 +147,31 @@ class AuthController {
             if (error.message === "INVALID_PASSWORD") {
                 return res.status(401).json({ success: false, message: "Incorrect password" });
             }
+            console.error("Deactivate account error:", error);
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+    // ✅ Reactivate Account
+    static async reactivateAccount(req, res) {
+        try {
+            const { email, password } = req.body;
+            if (!email || !password) {
+                return res.status(400).json({ success: false, message: "Email and password are required" });
+            }
+            const result = await auth_service_1.AuthService.reactivateAccount(email, password);
+            res.json(result);
+        }
+        catch (error) {
+            if (error.message === "USER_NOT_FOUND") {
+                return res.status(404).json({ success: false, message: "User not found" });
+            }
+            if (error.message === "INVALID_PASSWORD") {
+                return res.status(401).json({ success: false, message: "Incorrect password" });
+            }
+            if (error.message === "ACCOUNT_ALREADY_ACTIVE") {
+                return res.status(400).json({ success: false, message: "Account is already active" });
+            }
+            console.error("Reactivate account error:", error);
             res.status(500).json({ success: false, message: error.message });
         }
     }
@@ -160,6 +194,7 @@ class AuthController {
             if (error.message === "ADMIN_ACCESS_REQUIRED") {
                 return res.status(403).json({ success: false, message: "Admin access required" });
             }
+            console.error("Get all users error:", error);
             res.status(500).json({ success: false, message: error.message });
         }
     }
@@ -184,6 +219,7 @@ class AuthController {
             if (error.message === "USER_ALREADY_ADMIN") {
                 return res.status(400).json({ success: false, message: "User is already an admin" });
             }
+            console.error("Promote to admin error:", error);
             res.status(500).json({ success: false, message: error.message });
         }
     }
@@ -214,6 +250,7 @@ class AuthController {
             if (error.message === "CANNOT_DEMOTE_LAST_ADMIN") {
                 return res.status(400).json({ success: false, message: "Cannot demote the last admin" });
             }
+            console.error("Demote from admin error:", error);
             res.status(500).json({ success: false, message: error.message });
         }
     }
@@ -242,6 +279,7 @@ class AuthController {
             if (error.message === "CANNOT_CHANGE_LAST_ADMIN_ROLE") {
                 return res.status(400).json({ success: false, message: "Cannot change the last admin's role" });
             }
+            console.error("Change user role error:", error);
             res.status(500).json({ success: false, message: error.message });
         }
     }
@@ -266,6 +304,7 @@ class AuthController {
             if (error.message === "USER_NOT_FOUND") {
                 return res.status(404).json({ success: false, message: "User not found" });
             }
+            console.error("Suspend user error:", error);
             res.status(500).json({ success: false, message: error.message });
         }
     }
@@ -287,6 +326,7 @@ class AuthController {
             if (error.message === "USER_NOT_FOUND") {
                 return res.status(404).json({ success: false, message: "User not found" });
             }
+            console.error("Unsuspend user error:", error);
             res.status(500).json({ success: false, message: error.message });
         }
     }

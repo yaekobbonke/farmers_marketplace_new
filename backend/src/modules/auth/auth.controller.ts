@@ -1,6 +1,16 @@
 import { Request, Response } from "express";
 import { AuthService } from "./auth.service";
 
+// ✅ Define the authenticated request type with proper role union type
+interface AuthRequest extends Request {
+  user?: {
+    id: number;
+    email: string;
+    role: "FARMER" | "BUYER" | "ADMIN";  // ✅ Use union type instead of string
+    is_suspended?: boolean;
+  };
+}
+
 export class AuthController {
   // ✅ Register
   static async register(req: Request, res: Response) {
@@ -11,6 +21,7 @@ export class AuthController {
       if (error.message === "USER_ALREADY_EXISTS") {
         return res.status(409).json({ success: false, message: "User already exists" });
       }
+      console.error("Registration error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
@@ -24,12 +35,16 @@ export class AuthController {
       if (error.message === "INVALID_CREDENTIALS") {
         return res.status(401).json({ success: false, message: "Invalid email or password" });
       }
+      if (error.message === "ACCOUNT_SUSPENDED") {
+        return res.status(403).json({ success: false, message: "Your account has been suspended. Please contact support." });
+      }
+      console.error("Login error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
   // ✅ Get Profile
-  static async getProfile(req: Request, res: Response) {
+  static async getProfile(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) {
@@ -42,12 +57,13 @@ export class AuthController {
       if (error.message === "USER_NOT_FOUND") {
         return res.status(404).json({ success: false, message: "User not found" });
       }
+      console.error("Get profile error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
   // ✅ Update Profile
-  static async updateProfile(req: Request, res: Response) {
+  static async updateProfile(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) {
@@ -64,12 +80,13 @@ export class AuthController {
 
       res.json({ success: true, data: updated });
     } catch (error: any) {
+      console.error("Update profile error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
   // ✅ Change Password
-  static async changePassword(req: Request, res: Response) {
+  static async changePassword(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) {
@@ -95,12 +112,13 @@ export class AuthController {
       if (error.message === "USER_NOT_FOUND") {
         return res.status(404).json({ success: false, message: "User not found" });
       }
+      console.error("Change password error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
   // ✅ Delete Account
-  static async deleteAccount(req: Request, res: Response) {
+  static async deleteAccount(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) {
@@ -125,12 +143,13 @@ export class AuthController {
       if (error.message === "CANNOT_DELETE_LAST_ADMIN") {
         return res.status(403).json({ success: false, message: "Cannot delete the last admin account" });
       }
+      console.error("Delete account error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
   // ✅ Deactivate Account
-  static async deactivateAccount(req: Request, res: Response) {
+  static async deactivateAccount(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) {
@@ -149,12 +168,39 @@ export class AuthController {
       if (error.message === "INVALID_PASSWORD") {
         return res.status(401).json({ success: false, message: "Incorrect password" });
       }
+      console.error("Deactivate account error:", error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  // ✅ Reactivate Account
+  static async reactivateAccount(req: Request, res: Response) {
+    try {
+      const { email, password } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ success: false, message: "Email and password are required" });
+      }
+
+      const result = await AuthService.reactivateAccount(email, password);
+      res.json(result);
+    } catch (error: any) {
+      if (error.message === "USER_NOT_FOUND") {
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+      if (error.message === "INVALID_PASSWORD") {
+        return res.status(401).json({ success: false, message: "Incorrect password" });
+      }
+      if (error.message === "ACCOUNT_ALREADY_ACTIVE") {
+        return res.status(400).json({ success: false, message: "Account is already active" });
+      }
+      console.error("Reactivate account error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
   // ✅ Get All Users (Admin only)
-  static async getAllUsers(req: Request, res: Response) {
+  static async getAllUsers(req: AuthRequest, res: Response) {
     try {
       const adminId = req.user?.id;
       if (!adminId) {
@@ -173,12 +219,13 @@ export class AuthController {
       if (error.message === "ADMIN_ACCESS_REQUIRED") {
         return res.status(403).json({ success: false, message: "Admin access required" });
       }
+      console.error("Get all users error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
   // ✅ Promote to Admin
-  static async promoteToAdmin(req: Request, res: Response) {
+  static async promoteToAdmin(req: AuthRequest, res: Response) {
     try {
       const adminId = req.user?.id;
       if (!adminId) {
@@ -198,12 +245,13 @@ export class AuthController {
       if (error.message === "USER_ALREADY_ADMIN") {
         return res.status(400).json({ success: false, message: "User is already an admin" });
       }
+      console.error("Promote to admin error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
   // ✅ Demote from Admin
-  static async demoteFromAdmin(req: Request, res: Response) {
+  static async demoteFromAdmin(req: AuthRequest, res: Response) {
     try {
       const adminId = req.user?.id;
       if (!adminId) {
@@ -229,12 +277,13 @@ export class AuthController {
       if (error.message === "CANNOT_DEMOTE_LAST_ADMIN") {
         return res.status(400).json({ success: false, message: "Cannot demote the last admin" });
       }
+      console.error("Demote from admin error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
   // ✅ Change User Role
-  static async changeUserRole(req: Request, res: Response) {
+  static async changeUserRole(req: AuthRequest, res: Response) {
     try {
       const adminId = req.user?.id;
       if (!adminId) {
@@ -260,12 +309,13 @@ export class AuthController {
       if (error.message === "CANNOT_CHANGE_LAST_ADMIN_ROLE") {
         return res.status(400).json({ success: false, message: "Cannot change the last admin's role" });
       }
+      console.error("Change user role error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
   // ✅ Suspend User
-  static async suspendUser(req: Request, res: Response) {
+  static async suspendUser(req: AuthRequest, res: Response) {
     try {
       const adminId = req.user?.id;
       if (!adminId) {
@@ -285,12 +335,13 @@ export class AuthController {
       if (error.message === "USER_NOT_FOUND") {
         return res.status(404).json({ success: false, message: "User not found" });
       }
+      console.error("Suspend user error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }
 
   // ✅ Unsuspend User
-  static async unsuspendUser(req: Request, res: Response) {
+  static async unsuspendUser(req: AuthRequest, res: Response) {
     try {
       const adminId = req.user?.id;
       if (!adminId) {
@@ -307,6 +358,7 @@ export class AuthController {
       if (error.message === "USER_NOT_FOUND") {
         return res.status(404).json({ success: false, message: "User not found" });
       }
+      console.error("Unsuspend user error:", error);
       res.status(500).json({ success: false, message: error.message });
     }
   }

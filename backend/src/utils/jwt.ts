@@ -1,3 +1,5 @@
+// backend/src/utils/jwt.ts
+
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET: string = process.env.JWT_SECRET || "jackman@Bonke";
@@ -13,17 +15,21 @@ export function signToken(payload: TokenPayload): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
 }
 
-export function verifyToken(token: string): TokenPayload {
+// ✅ Fixed: Return null instead of throwing errors
+export function verifyToken(token: string): TokenPayload | null {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     return decoded as TokenPayload;
   } catch (error: any) {
     if (error.name === "TokenExpiredError") {
-      throw new Error("Token has expired");
+      console.log("Token has expired");
+      return null;
     }
     if (error.name === "JsonWebTokenError") {
-      throw new Error("Invalid token");
+      console.log("Invalid token");
+      return null;
     }
-    throw error;
+    console.log("Token verification error:", error.message);
+    return null;
   }
 }

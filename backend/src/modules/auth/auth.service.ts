@@ -2,13 +2,24 @@ import prisma from "../../config/prisma";
 import { hashPassword, comparePassword } from "../../utils/bcrypt";
 import { RegisterInput, LoginInput } from "./auth.types";
 import { signToken } from "../../utils/jwt";
+import { Role } from "@prisma/client"; // ✅ Import the Role enum from Prisma
 
 export class AuthService {
-  // ✅ Your existing register method
+  // ✅ Register method with proper Role enum
   static async register(input: RegisterInput): Promise<{ userId: number }> {
     const hashed = await hashPassword(input.password);
 
     try {
+      // ✅ Convert role string to Role enum
+      let roleEnum: Role = Role.BUYER;
+      if (input.role?.toUpperCase() === "ADMIN") {
+        roleEnum = Role.ADMIN;
+      } else if (input.role?.toUpperCase() === "FARMER") {
+        roleEnum = Role.FARMER;
+      } else {
+        roleEnum = Role.BUYER;
+      }
+
       const user = await prisma.user.create({
         data: {
           first_name: input.first_name,
@@ -17,7 +28,7 @@ export class AuthService {
           email: input.email.toLowerCase().trim(),
           phone: input.phone,
           password: hashed,
-          role: input.role || "BUYER",
+          role: roleEnum, // ✅ Use the Role enum
         },
         select: { id: true },
       });
@@ -30,7 +41,7 @@ export class AuthService {
     }
   }
 
-  // ✅ Your existing login method
+  // ✅ Login method - ensures role is uppercase in token
   static async login(input: LoginInput): Promise<{ token: string; user: any }> {
     const user = await prisma.user.findUnique({
       where: { email: input.email.toLowerCase().trim() },
@@ -41,6 +52,7 @@ export class AuthService {
         role: true,
         first_name: true,
         last_name: true,
+        is_suspended: true,
       },
     });
 
@@ -48,24 +60,37 @@ export class AuthService {
       throw new Error("INVALID_CREDENTIALS");
     }
 
+    // Check if user is suspended
+    if (user.is_suspended) {
+      throw new Error("ACCOUNT_SUSPENDED");
+    }
+
     const valid = await comparePassword(input.password, user.password);
     if (!valid) {
       throw new Error("INVALID_CREDENTIALS");
     }
 
+    // ✅ Get role as string (enum value)
+    const userRole = user.role as string;
+    
     const token = signToken({ 
       id: user.id, 
       email: user.email, 
-      role: user.role 
+      role: userRole.toUpperCase(),
+      is_suspended: user.is_suspended
     });
+
+    console.log(`User logged in: ${user.email}, Role: ${userRole}`);
 
     return { 
       token, 
       user: {
         id: user.id,
+        first_name: user.first_name,
+        last_name: user.last_name,
         name: `${user.first_name} ${user.last_name}`,
         email: user.email,
-        role: user.role
+        role: userRole.toUpperCase()
       }
     };
   }
@@ -188,9 +213,9 @@ export class AuthService {
       throw new Error("INVALID_PASSWORD");
     }
 
-    if (user.role === "ADMIN") {
+    if (user.role === Role.ADMIN) {
       const adminCount = await prisma.user.count({
-        where: { role: "ADMIN" }
+        where: { role: Role.ADMIN }
       });
       if (adminCount === 1) {
         throw new Error("CANNOT_DELETE_LAST_ADMIN");
@@ -262,26 +287,28 @@ export class AuthService {
     return { success: true, message: "Account reactivated successfully" };
   }
 
-  // ✅ NEW: Get all users (admin only)
+  // ✅ Get all users (admin only)
   static async getAllUsers(adminId: number, filters?: {
     role?: string;
     isActive?: boolean;
     search?: string;
   }) {
-    // Verify the requester is admin
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
       select: { role: true }
     });
 
-    if (!admin || admin.role !== "ADMIN") {
+    if (!admin || admin.role !== Role.ADMIN) {
       throw new Error("ADMIN_ACCESS_REQUIRED");
     }
 
     const where: any = {};
 
     if (filters?.role) {
-      where.role = filters.role;
+      const roleUpper = filters.role.toUpperCase();
+      if (roleUpper === "ADMIN") where.role = Role.ADMIN;
+      else if (roleUpper === "FARMER") where.role = Role.FARMER;
+      else if (roleUpper === "BUYER") where.role = Role.BUYER;
     }
 
     if (filters?.isActive !== undefined) {
@@ -324,19 +351,17 @@ export class AuthService {
     return users;
   }
 
-  // ✅ NEW: Promote user to admin (admin only)
+  // ✅ Promote user to admin (admin only)
   static async promoteToAdmin(adminId: number, targetUserId: number) {
-    // Verify the requester is admin
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
       select: { role: true }
     });
 
-    if (!admin || admin.role !== "ADMIN") {
+    if (!admin || admin.role !== Role.ADMIN) {
       throw new Error("ADMIN_ACCESS_REQUIRED");
     }
 
-    // Check if target user exists
     const targetUser = await prisma.user.findUnique({
       where: { id: targetUserId },
       select: { id: true, role: true, email: true }
@@ -346,14 +371,13 @@ export class AuthService {
       throw new Error("USER_NOT_FOUND");
     }
 
-    if (targetUser.role === "ADMIN") {
+    if (targetUser.role === Role.ADMIN) {
       throw new Error("USER_ALREADY_ADMIN");
     }
 
-    // Promote to admin
     const updatedUser = await prisma.user.update({
       where: { id: targetUserId },
-      data: { role: "ADMIN" },
+      data: { role: Role.ADMIN },
       select: {
         id: true,
         first_name: true,
@@ -364,8 +388,7 @@ export class AuthService {
       }
     });
 
-    // Log the action (optional - you can create an AdminLog model)
-    console.log(`Admin ${adminId} promoted user ${targetUserId} (${targetUser.email}) to ADMIN`);
+    console.log(`Admin ${adminId} promoted user ${targetUserId} to ADMIN`);
 
     return { 
       success: true, 
@@ -374,24 +397,21 @@ export class AuthService {
     };
   }
 
-  // ✅ NEW: Demote admin to regular user (admin only)
+  // ✅ Demote admin to regular user (admin only)
   static async demoteFromAdmin(adminId: number, targetUserId: number) {
-    // Verify the requester is admin
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
       select: { role: true }
     });
 
-    if (!admin || admin.role !== "ADMIN") {
+    if (!admin || admin.role !== Role.ADMIN) {
       throw new Error("ADMIN_ACCESS_REQUIRED");
     }
 
-    // Prevent demoting self
     if (adminId === targetUserId) {
       throw new Error("CANNOT_DEMOTE_SELF");
     }
 
-    // Check if target user exists
     const targetUser = await prisma.user.findUnique({
       where: { id: targetUserId },
       select: { id: true, role: true, email: true }
@@ -401,23 +421,21 @@ export class AuthService {
       throw new Error("USER_NOT_FOUND");
     }
 
-    if (targetUser.role !== "ADMIN") {
+    if (targetUser.role !== Role.ADMIN) {
       throw new Error("USER_NOT_ADMIN");
     }
 
-    // Check if this is the last admin
     const adminCount = await prisma.user.count({
-      where: { role: "ADMIN" }
+      where: { role: Role.ADMIN }
     });
 
     if (adminCount === 1) {
       throw new Error("CANNOT_DEMOTE_LAST_ADMIN");
     }
 
-    // Demote to regular user (default to BUYER role)
     const updatedUser = await prisma.user.update({
       where: { id: targetUserId },
-      data: { role: "BUYER" },
+      data: { role: Role.BUYER },
       select: {
         id: true,
         first_name: true,
@@ -428,7 +446,7 @@ export class AuthService {
       }
     });
 
-    console.log(`Admin ${adminId} demoted user ${targetUserId} (${targetUser.email}) from ADMIN`);
+    console.log(`Admin ${adminId} demoted user ${targetUserId} from ADMIN`);
 
     return { 
       success: true, 
@@ -437,22 +455,20 @@ export class AuthService {
     };
   }
 
-  // ✅ NEW: Change user role (admin only)
+  // ✅ Change user role (admin only)
   static async changeUserRole(adminId: number, targetUserId: number, newRole: "ADMIN" | "FARMER" | "BUYER") {
-    // Verify the requester is admin
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
       select: { role: true }
     });
 
-    if (!admin || admin.role !== "ADMIN") {
+    if (!admin || admin.role !== Role.ADMIN) {
       throw new Error("ADMIN_ACCESS_REQUIRED");
     }
 
-    // Prevent changing own role if it would remove last admin
     if (adminId === targetUserId && newRole !== "ADMIN") {
       const adminCount = await prisma.user.count({
-        where: { role: "ADMIN" }
+        where: { role: Role.ADMIN }
       });
       if (adminCount === 1) {
         throw new Error("CANNOT_CHANGE_LAST_ADMIN_ROLE");
@@ -468,9 +484,22 @@ export class AuthService {
       throw new Error("USER_NOT_FOUND");
     }
 
+    // Convert string to Role enum
+    let roleEnum: Role;
+    switch (newRole.toUpperCase()) {
+      case "ADMIN":
+        roleEnum = Role.ADMIN;
+        break;
+      case "FARMER":
+        roleEnum = Role.FARMER;
+        break;
+      default:
+        roleEnum = Role.BUYER;
+    }
+
     const updatedUser = await prisma.user.update({
       where: { id: targetUserId },
-      data: { role: newRole },
+      data: { role: roleEnum },
       select: {
         id: true,
         first_name: true,
@@ -488,14 +517,14 @@ export class AuthService {
     };
   }
 
-  // ✅ NEW: Suspend user account (admin only)
+  // ✅ Suspend user account (admin only)
   static async suspendUser(adminId: number, targetUserId: number) {
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
       select: { role: true }
     });
 
-    if (!admin || admin.role !== "ADMIN") {
+    if (!admin || admin.role !== Role.ADMIN) {
       throw new Error("ADMIN_ACCESS_REQUIRED");
     }
 
@@ -534,14 +563,14 @@ export class AuthService {
     };
   }
 
-  // ✅ NEW: Unsuspend user account (admin only)
+  // ✅ Unsuspend user account (admin only)
   static async unsuspendUser(adminId: number, targetUserId: number) {
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
       select: { role: true }
     });
 
-    if (!admin || admin.role !== "ADMIN") {
+    if (!admin || admin.role !== Role.ADMIN) {
       throw new Error("ADMIN_ACCESS_REQUIRED");
     }
 
