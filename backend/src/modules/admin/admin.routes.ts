@@ -1,3 +1,5 @@
+// backend/src/modules/admin/index.ts
+
 import { Router } from "express";
 import { AdminController } from "./admin.controller";
 import { AdminSettingsController } from "./admin.settings.controller";
@@ -5,6 +7,8 @@ import { authenticate, requireRole } from "../../middleware/authMiddleware";
 
 const router = Router();
 
+router.use(authenticate);
+router.use(requireRole("ADMIN"));  // This will now work
 
 router.use(authenticate);
 router.use(requireRole("ADMIN"));  
