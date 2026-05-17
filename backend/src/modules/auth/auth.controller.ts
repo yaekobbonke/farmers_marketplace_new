@@ -6,9 +6,12 @@ interface AuthRequest extends Request {
   user?: {
     id: number;
     email: string;
-    role: "FARMER" | "BUYER" | "ADMIN";  // ✅ Use union type instead of string
+    role: "FARMER" | "BUYER" | "ADMIN";
     is_suspended?: boolean;
   };
+  body: any;      
+  params: any;    
+  query: any;    
 }
 
 export class AuthController {
@@ -26,7 +29,7 @@ export class AuthController {
     }
   }
 
-  // ✅ Login
+  
   static async login(req: Request, res: Response) {
     try {
       const result = await AuthService.login(req.body);
@@ -43,7 +46,6 @@ export class AuthController {
     }
   }
 
-  // ✅ Get Profile
   static async getProfile(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
