@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { ProductService } from "./product.service";
 
 // Extend Request to include user property
-interface AuthRequest extends Request {
+export interface AuthRequest extends Request {
   user?: {
     id: number;
     email: string;
@@ -86,8 +86,10 @@ export class ProductController {
         return res.status(401).json({ success: false, message: "Unauthorized" });
       }
       
+      const body = req.body as any;
+      
       // Validate required fields
-      const { name, description, price, quantity, categoryId } = req.body;
+      const { name, description, price, quantity, categoryId } = body;
       if (!name || !description || !price || !quantity || !categoryId) {
         return res.status(400).json({ 
           success: false, 
@@ -95,7 +97,7 @@ export class ProductController {
         });
       }
       
-      const product = await ProductService.create(userId, req.body);
+      const product = await ProductService.create(userId, body);
       res.status(201).json({ 
         success: true, 
         data: product, 
@@ -121,7 +123,7 @@ export class ProductController {
         return res.status(400).json({ success: false, message: "Invalid product ID" });
       }
       
-      const product = await ProductService.update(id, userId, req.body, req.user?.role);
+      const product = await ProductService.update(id, userId, req.body as any, req.user?.role);
       res.json({ success: true, data: product, message: "Product updated successfully" });
     } catch (error: any) {
       console.error("Error updating product:", error.message);
@@ -216,7 +218,8 @@ export class ProductController {
       }
       
       const id = parseInt(req.params.id);
-      const { reason } = req.body;
+      const body = req.body as any;
+      const reason = body?.reason;
       
       if (isNaN(id)) {
         return res.status(400).json({ success: false, message: "Invalid product ID" });
@@ -251,10 +254,11 @@ export class ProductController {
       }
       
       const product = await ProductService.featureProduct(id);
+      const tags = product.tags as string | null;
       res.json({ 
         success: true, 
         data: product, 
-        message: product.tags?.includes("featured") 
+        message: tags?.includes("featured") 
           ? "Product featured successfully. Farmer has been notified." 
           : "Product unfeatured successfully." 
       });
@@ -316,7 +320,8 @@ export class ProductController {
     try {
       const userId = req.user?.id;
       const id = parseInt(req.params.id);
-      const { quantitySold } = req.body;
+      const body = req.body as any;
+      const quantitySold = body?.quantitySold;
       
       if (!userId) {
         return res.status(401).json({ success: false, message: "Unauthorized" });

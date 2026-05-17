@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { AnalyticsService } from "./analytics.service";
 
-// Extend Request to include user property
-interface AuthRequest extends Request {
+// Extend Express Request properly
+export interface AuthRequest extends Request {
   user?: {
     id: number;
     email: string;
@@ -35,17 +35,17 @@ export class AnalyticsController {
         return res.status(401).json({ success: false, message: "Unauthorized" });
       }
       
-      const { period = "week" } = req.query;
+      const period = req.query.period as string || "week";
       const validPeriods = ["week", "month", "year"];
       
-      if (!validPeriods.includes(period as string)) {
+      if (!validPeriods.includes(period)) {
         return res.status(400).json({ 
           success: false, 
           message: "Invalid period. Use week, month, or year" 
         });
       }
       
-      const analytics = await AnalyticsService.getFarmerProductAnalytics(userId, period as string);
+      const analytics = await AnalyticsService.getFarmerProductAnalytics(userId, period);
       res.json({ success: true, data: analytics });
     } catch (error: any) {
       console.error("Error fetching product analytics:", error.message);
@@ -60,17 +60,17 @@ export class AnalyticsController {
         return res.status(401).json({ success: false, message: "Unauthorized" });
       }
       
-      const { period = "month" } = req.query;
+      const period = req.query.period as string || "month";
       const validPeriods = ["week", "month", "year"];
       
-      if (!validPeriods.includes(period as string)) {
+      if (!validPeriods.includes(period)) {
         return res.status(400).json({ 
           success: false, 
           message: "Invalid period. Use week, month, or year" 
         });
       }
       
-      const analytics = await AnalyticsService.getFarmerSalesAnalytics(userId, period as string);
+      const analytics = await AnalyticsService.getFarmerSalesAnalytics(userId, period);
       res.json({ success: true, data: analytics });
     } catch (error: any) {
       console.error("Error fetching sales analytics:", error.message);
@@ -95,7 +95,6 @@ export class AnalyticsController {
   
   static async getAdminOverview(req: AuthRequest, res: Response) {
     try {
-      // Check admin role
       if (req.user?.role !== "ADMIN") {
         return res.status(403).json({ 
           success: false, 

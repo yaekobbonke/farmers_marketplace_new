@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { SearchService } from "./search.service";
 
 // Extend Request to include user property
-interface AuthRequest extends Request {
+export interface AuthRequest extends Request {
   user?: {
     id: number;
     email: string;
@@ -74,7 +74,8 @@ export class SearchController {
   static async getRecommendations(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
-      const limit = req.query.limit ? Math.min(parseInt(req.query.limit as string) || 6, 20) : 6;
+      const limitQuery = req.query.limit;
+      const limit = limitQuery ? Math.min(parseInt(limitQuery as string) || 6, 20) : 6;
       
       const recommendations = await SearchService.getRecommendations(userId, limit);
       
@@ -112,7 +113,8 @@ export class SearchController {
         });
       }
 
-      const limit = req.query.limit ? Math.min(parseInt(req.query.limit as string) || 20, 50) : 20;
+      const limitQuery = req.query.limit;
+      const limit = limitQuery ? Math.min(parseInt(limitQuery as string) || 20, 50) : 20;
       const history = await SearchService.getSearchHistory(userId, limit);
       
       res.json({
@@ -141,7 +143,8 @@ export class SearchController {
   static async saveSearch(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
-      const { query } = req.body;
+      const body = req.body as any;
+      const query = body?.query;
       
       if (!userId) {
         return res.status(401).json({
@@ -222,8 +225,10 @@ export class SearchController {
    */
   static async getTrendingSearches(req: Request, res: Response) {
     try {
-      const limit = req.query.limit ? Math.min(parseInt(req.query.limit as string) || 5, 20) : 5;
-      const hours = req.query.hours ? Math.min(parseInt(req.query.hours as string) || 24, 168) : 24; // Max 7 days
+      const limitQuery = req.query.limit;
+      const hoursQuery = req.query.hours;
+      const limit = limitQuery ? Math.min(parseInt(limitQuery as string) || 5, 20) : 5;
+      const hours = hoursQuery ? Math.min(parseInt(hoursQuery as string) || 24, 168) : 24; // Max 7 days
       
       const trending = await SearchService.getTrendingSearches(limit, hours);
       
@@ -253,7 +258,8 @@ export class SearchController {
   static async getSimilarProducts(req: Request, res: Response) {
     try {
       const productId = parseInt(req.params.productId);
-      const limit = req.query.limit ? Math.min(parseInt(req.query.limit as string) || 4, 12) : 4;
+      const limitQuery = req.query.limit;
+      const limit = limitQuery ? Math.min(parseInt(limitQuery as string) || 4, 12) : 4;
       
       if (isNaN(productId) || productId <= 0) {
         return res.status(400).json({
@@ -378,7 +384,8 @@ export class SearchController {
       }
 
       const sanitizedQuery = q.trim().slice(0, 50);
-      const limit = req.query.limit ? Math.min(parseInt(req.query.limit as string) || 5, 10) : 5;
+      const limitQuery = req.query.limit;
+      const limit = limitQuery ? Math.min(parseInt(limitQuery as string) || 5, 10) : 5;
       
       const suggestions = await SearchService.getSearchSuggestions(sanitizedQuery, limit);
       

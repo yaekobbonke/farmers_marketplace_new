@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
+import { Readable } from "stream";
 import { AssistantService } from "./assistant.service";
 
-// Extend Request to include user property
-interface AuthRequest extends Request {
+// Extend Express Request properly
+export interface AuthRequest extends Request {
   user?: {
     id: number;
     email: string;
@@ -19,7 +20,8 @@ export class AssistantController {
     console.log("Body:", req.body);
 
     // 2. FLEXIBLE DESTRUCTURING: Handle multiple possible field names
-    const query = req.body?.query || req.body?.message || req.body?.text;
+    const body = req.body as any;
+    const query = body?.query || body?.message || body?.text;
 
     if (!query) {
       console.error("❌ Error: No query/message found in request body.");
@@ -119,7 +121,7 @@ export class AssistantController {
       });
 
       // Handle client disconnect
-      req.on('close', () => {
+      (req as any).on('close', () => {
         if (!isStreamEnded && stream && !stream.destroyed) {
           console.log("⚠️ Client disconnected, destroying stream");
           isStreamEnded = true;
@@ -311,7 +313,9 @@ export class AssistantController {
   static async saveChatMessage(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
-      const { query, response } = req.body;
+      const body = req.body as any;
+      const query = body?.query;
+      const response = body?.response;
       
       if (!userId) {
         return res.status(401).json({ 
