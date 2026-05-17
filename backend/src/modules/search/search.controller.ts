@@ -1,16 +1,6 @@
 import { Request, Response } from "express";
 import { SearchService } from "./search.service";
 
-// Extend Request to include user property
-export interface AuthRequest extends Request {
-  user?: {
-    id: number;
-    email: string;
-    role: "FARMER" | "BUYER" | "ADMIN";
-    is_suspended?: boolean;
-  };
-}
-
 export class SearchController {
   /**
    * Search products with query string
@@ -40,10 +30,10 @@ export class SearchController {
       const results = await SearchService.search(sanitizedQuery, searchLimit);
       
       // Save search to history if user is authenticated
-      const authReq = req as AuthRequest;
-      if (authReq.user?.id && sanitizedQuery.length >= 3) {
+      const user = (req as any).user;
+      if (user?.id && sanitizedQuery.length >= 3) {
         // Don't await - fire and forget to not block response
-        SearchService.saveSearch(authReq.user.id, sanitizedQuery).catch(err => {
+        SearchService.saveSearch(user.id, sanitizedQuery).catch(err => {
           console.error("Failed to save search history:", err.message);
         });
       }
@@ -71,9 +61,10 @@ export class SearchController {
    * Get personalized product recommendations
    * GET /api/search/recommendations?limit=6
    */
-  static async getRecommendations(req: AuthRequest, res: Response) {
+  static async getRecommendations(req: Request, res: Response) {
     try {
-      const userId = req.user?.id;
+      const user = (req as any).user;
+      const userId = user?.id;
       const limitQuery = req.query.limit;
       const limit = limitQuery ? Math.min(parseInt(limitQuery as string) || 6, 20) : 6;
       
@@ -102,9 +93,10 @@ export class SearchController {
    * Get user's search history (authenticated only)
    * GET /api/search/history?limit=20
    */
-  static async getSearchHistory(req: AuthRequest, res: Response) {
+  static async getSearchHistory(req: Request, res: Response) {
     try {
-      const userId = req.user?.id;
+      const user = (req as any).user;
+      const userId = user?.id;
       
       if (!userId) {
         return res.status(401).json({
@@ -140,11 +132,11 @@ export class SearchController {
    * POST /api/search/history
    * Body: { query: "search term" }
    */
-  static async saveSearch(req: AuthRequest, res: Response) {
+  static async saveSearch(req: Request, res: Response) {
     try {
-      const userId = req.user?.id;
-      const body = req.body as any;
-      const query = body?.query;
+      const user = (req as any).user;
+      const userId = user?.id;
+      const { query } = req.body;
       
       if (!userId) {
         return res.status(401).json({
@@ -191,9 +183,10 @@ export class SearchController {
    * Clear user's search history (authenticated only)
    * DELETE /api/search/history
    */
-  static async clearSearchHistory(req: AuthRequest, res: Response) {
+  static async clearSearchHistory(req: Request, res: Response) {
     try {
-      const userId = req.user?.id;
+      const user = (req as any).user;
+      const userId = user?.id;
       
       if (!userId) {
         return res.status(401).json({
@@ -412,10 +405,11 @@ export class SearchController {
    * Clear search cache (admin only)
    * DELETE /api/search/cache
    */
-  static async clearCache(req: AuthRequest, res: Response) {
+  static async clearCache(req: Request, res: Response) {
     try {
+      const user = (req as any).user;
       // Admin only check
-      if (req.user?.role !== "ADMIN") {
+      if (user?.role !== "ADMIN") {
         return res.status(403).json({
           success: false,
           message: "Admin access required"
