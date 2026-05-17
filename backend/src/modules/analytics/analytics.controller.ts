@@ -1,19 +1,9 @@
 import { Request, Response } from "express";
 import { AnalyticsService } from "./analytics.service";
 
-// Extend Express Request properly
-export interface AuthRequest extends Request {
-  user?: {
-    id: number;
-    email: string;
-    role: "FARMER" | "BUYER" | "ADMIN";
-    is_suspended?: boolean;
-  };
-}
-
 export class AnalyticsController {
   
-  static async getFarmerOverview(req: AuthRequest, res: Response) {
+  static async getFarmerOverview(req: Request, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) {
@@ -28,7 +18,7 @@ export class AnalyticsController {
     }
   }
   
-  static async getFarmerProductAnalytics(req: AuthRequest, res: Response) {
+  static async getFarmerProductAnalytics(req: Request, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) {
@@ -53,7 +43,7 @@ export class AnalyticsController {
     }
   }
   
-  static async getFarmerSalesAnalytics(req: AuthRequest, res: Response) {
+  static async getFarmerSalesAnalytics(req: Request, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) {
@@ -78,7 +68,7 @@ export class AnalyticsController {
     }
   }
   
-  static async getFarmerViewsAnalytics(req: AuthRequest, res: Response) {
+  static async getFarmerViewsAnalytics(req: Request, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) {
@@ -93,7 +83,7 @@ export class AnalyticsController {
     }
   }
   
-  static async getAdminOverview(req: AuthRequest, res: Response) {
+  static async getAdminOverview(req: Request, res: Response) {
     try {
       if (req.user?.role !== "ADMIN") {
         return res.status(403).json({ 
@@ -110,7 +100,7 @@ export class AnalyticsController {
     }
   }
   
-  static async getAdminProductAnalytics(req: AuthRequest, res: Response) {
+  static async getAdminProductAnalytics(req: Request, res: Response) {
     try {
       if (req.user?.role !== "ADMIN") {
         return res.status(403).json({ 
@@ -130,7 +120,7 @@ export class AnalyticsController {
     }
   }
   
-  static async getAdminUserAnalytics(req: AuthRequest, res: Response) {
+  static async getAdminUserAnalytics(req: Request, res: Response) {
     try {
       if (req.user?.role !== "ADMIN") {
         return res.status(403).json({ 

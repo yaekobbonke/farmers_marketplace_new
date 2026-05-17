@@ -2,24 +2,12 @@ import { Request, Response } from "express";
 import { Readable } from "stream";
 import { AssistantService } from "./assistant.service";
 
-// Extend Express Request properly
-export interface AuthRequest extends Request {
-  user?: {
-    id: number;
-    email: string;
-    role: "FARMER" | "BUYER" | "ADMIN";
-    is_suspended?: boolean;
-  };
-}
-
 export class AssistantController {
-  static async chat(req: AuthRequest, res: Response) {
-    // 1. DEBUGGING: Check what Express actually sees
+  static async chat(req: Request, res: Response) {
     console.log("--- 📥 Incoming AI Request ---");
     console.log("Content-Type:", req.headers["content-type"]);
     console.log("Body:", req.body);
 
-    // 2. FLEXIBLE DESTRUCTURING: Handle multiple possible field names
     const body = req.body as any;
     const query = body?.query || body?.message || body?.text;
 
@@ -32,7 +20,6 @@ export class AssistantController {
       });
     }
 
-    // Validate query type
     if (typeof query !== 'string') {
       console.error("❌ Error: Query must be a string");
       return res.status(400).json({
@@ -41,10 +28,8 @@ export class AssistantController {
       });
     }
 
-    // Sanitize input to prevent injection attacks
-    const sanitizedQuery = query.trim().substring(0, 1000); // Limit length
+    const sanitizedQuery = query.trim().substring(0, 1000);
     
-    // Check if query is empty after sanitization
     if (sanitizedQuery.length === 0) {
       return res.status(400).json({
         success: false,
@@ -55,7 +40,6 @@ export class AssistantController {
     try {
       const stream = await AssistantService.chat(sanitizedQuery);
 
-      // FIX: Check if stream is null
       if (!stream) {
         console.error("❌ Error: Received null stream from AssistantService");
         return res.status(503).json({ 
@@ -64,27 +48,18 @@ export class AssistantController {
         });
       }
 
-      // Set streaming headers
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.setHeader('Transfer-Encoding', 'chunked');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       res.setHeader('X-Content-Type-Options', 'nosniff');
-      
-      // Optional: Enable CORS for this endpoint if needed
       res.setHeader('Access-Control-Allow-Origin', '*');
 
-      // Flag to track if stream has ended
       let isStreamEnded = false;
 
-      // 3. DATA HANDLING: Handle Buffer vs String correctly
       stream.on('data', (chunk: Buffer | string) => {
         if (isStreamEnded) return;
-        
-        // Convert Buffer to string if needed
         const data = Buffer.isBuffer(chunk) ? chunk.toString('utf-8') : chunk;
-        
-        // Write to response
         try {
           res.write(data);
         } catch (writeError) {
@@ -104,7 +79,6 @@ export class AssistantController {
       stream.on('error', (streamErr: Error) => {
         if (isStreamEnded) return;
         isStreamEnded = true;
-        
         console.error("❌ Stream Error:", streamErr.message);
         if (!res.headersSent) {
           res.status(500).json({ 
@@ -120,8 +94,7 @@ export class AssistantController {
         }
       });
 
-      // Handle client disconnect
-      (req as any).on('close', () => {
+      req.on('close', () => {
         if (!isStreamEnded && stream && !stream.destroyed) {
           console.log("⚠️ Client disconnected, destroying stream");
           isStreamEnded = true;
@@ -129,7 +102,6 @@ export class AssistantController {
         }
       });
 
-      // Optional: Handle response finish
       res.on('finish', () => {
         if (!isStreamEnded && stream && !stream.destroyed) {
           console.log("Response finished, cleaning up stream");
@@ -140,9 +112,7 @@ export class AssistantController {
     } catch (error: any) {
       console.error("Assistant Controller Catch Error:", error.message);
       
-      // Don't send response if headers already sent
       if (!res.headersSent) {
-        // Handle specific error types
         if (error.code === 'ECONNREFUSED' || error.message?.includes('ECONNREFUSED')) {
           return res.status(503).json({ 
             success: false, 
@@ -157,20 +127,12 @@ export class AssistantController {
           });
         }
         
-        if (error.message?.includes('FASTAPI_URL')) {
-          return res.status(500).json({
-            success: false,
-            message: "AI service is not configured correctly. Please contact support."
-          });
-        }
-        
         return res.status(500).json({ 
           success: false, 
           message: error.message || "Failed to connect to AI service" 
         });
       }
       
-      // Headers already sent, try to end gracefully
       try {
         res.end();
       } catch (err) {
@@ -190,7 +152,6 @@ export class AssistantController {
         });
       }
       
-      // Simple health check
       return res.status(200).json({
         success: true,
         message: "Assistant controller is operational",
@@ -206,7 +167,7 @@ export class AssistantController {
     }
   }
 
-  static async getFarmerInsights(req: AuthRequest, res: Response) {
+  static async getFarmerInsights(req: Request, res: Response) {
     try {
       const userId = req.user?.id;
       
@@ -218,7 +179,6 @@ export class AssistantController {
       }
       
       console.log(`🔍 Fetching insights for farmer ID: ${userId}`);
-      
       const insights = await AssistantService.getFarmerInsights(userId);
       
       return res.status(200).json({
@@ -228,8 +188,6 @@ export class AssistantController {
       
     } catch (error: any) {
       console.error("Error fetching farmer insights:", error.message);
-      
-      // Return fallback insights instead of error
       return res.status(200).json({
         success: true,
         data: {
@@ -254,12 +212,9 @@ export class AssistantController {
     }
   }
 
-  // Get admin insights
-  static async getAdminInsights(req: AuthRequest, res: Response) {
+  static async getAdminInsights(req: Request, res: Response) {
     try {
-      const userRole = req.user?.role;
-      
-      if (userRole !== "ADMIN") {
+      if (req.user?.role !== "ADMIN") {
         return res.status(403).json({ 
           success: false, 
           message: "Admin access required" 
@@ -282,7 +237,7 @@ export class AssistantController {
     }
   }
 
-  static async getChatHistory(req: AuthRequest, res: Response) {
+  static async getChatHistory(req: Request, res: Response) {
     try {
       const userId = req.user?.id;
       
@@ -309,13 +264,10 @@ export class AssistantController {
     }
   }
 
-  // ✅ Save chat message
-  static async saveChatMessage(req: AuthRequest, res: Response) {
+  static async saveChatMessage(req: Request, res: Response) {
     try {
       const userId = req.user?.id;
-      const body = req.body as any;
-      const query = body?.query;
-      const response = body?.response;
+      const { query, response } = req.body;
       
       if (!userId) {
         return res.status(401).json({ 
@@ -348,7 +300,6 @@ export class AssistantController {
     }
   }
 
-  // ✅ Get price forecast
   static async getPriceForecast(req: Request, res: Response) {
     try {
       const productId = parseInt(req.params.productId);
