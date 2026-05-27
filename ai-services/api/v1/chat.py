@@ -5,22 +5,30 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-# Relative import to avoid ModuleNotFoundError
-from .forecast import PriceInference 
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+from .forecast import PriceInference
 
 router = APIRouter()
 
 # Node.js backend URL for SQL data
 MARKET_API_URL = "http://localhost:5000/api/prices/latest"
-# Path to your scraper output
 SCRAPER_DATA_PATH = os.path.join(os.path.dirname(__file__), "market_intelligence.json")
 
-# 1. Define Schemas
 class ChatRequest(BaseModel):
     message: str
     user: str = "Farmer"
+    session_id: Optional[str] = None
+    history: Optional[List[Dict[str, str]]] = None
 
-# 2. Helper: Fetch SQL Data (Local Markets)
+class ChatResponse(BaseModel):
+    response: str
+    session_id: Optional[str] = None
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+# Store conversation history (in production, use Redis or database)
+conversation_history: Dict[str, List[Dict[str, str]]] = {}
+
 async def fetch_market_data():
     """Fetches real-time price data from the TypeScript/PostgreSQL backend."""
     try:
@@ -28,140 +36,243 @@ async def fetch_market_data():
             response = await client.get(MARKET_API_URL)
             if response.status_code == 200:
                 data = response.json()
-                if not data: 
+                if not data:
                     return "No local market price updates available currently."
                 
-                return "\n".join([
-                    f"- {item['product']} in {item['market']}: {item['price']} ETB (Updated: {item.get('updatedAt', '')[:10]})"
-                    for item in data
-                ])
+                items = data.get('data', data) if isinstance(data, dict) else data
+                if isinstance(items, list) and len(items) > 0:
+                    return "\n".join([
+                        f"- {item.get('productName', item.get('product', 'Unknown'))}: {item.get('price', 0)} ETB"
+                        for item in items[:10]
+                    ])
             return "Local market feed is currently offline."
     except Exception as e:
         print(f"📡 SQL API Connection Error: {e}")
         return "Unable to reach the local price database."
 
-# 3. Helper: Fetch Scraper Data (Official Daily ECX)
 def fetch_daily_ecx_intelligence():
     """Reads the latest daily ECX report from the web scraper JSON."""
     try:
         if os.path.exists(SCRAPER_DATA_PATH):
-            with open(SCRAPER_DATA_PATH, 'r') as f:
+            with open(SCRAPER_DATA_PATH, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 if not data:
                     return "Daily ECX report is empty."
                 
                 return "\n".join([
-                    f"- {item['commodity']} ({item['symbol']}): {item['price_per_kg']} ETB/kg (Official ECX)"
-                    for item in data[:8]  # Limit to save context tokens
+                    f"- {item.get('commodity', item.get('name', 'Unknown'))}: {item.get('price_per_kg', item.get('price', 0))} ETB/kg"
+                    for item in data[:10]
                 ])
         return "Official Daily ECX report not found."
     except Exception as e:
         print(f"📈 Scraper Data Error: {e}")
         return "Daily trade report unavailable."
 
+async def get_price_prediction(commodity: str, fastapi_req: Request) -> Optional[str]:
+    """Get AI price prediction for a commodity"""
+    price_model = getattr(fastapi_req.app.state, "price_model", None)
+    
+    if not price_model:
+        return None
+    
+    try:
+        commodity_map = {
+            "teff": "TEFF",
+            "maize": "MAIZE (WHITE)",
+            "wheat": "WHEAT",
+            "coffee": "COFFEE",
+            "barley": "BARLEY"
+        }
+        
+        mapped_commodity = commodity_map.get(commodity.lower(), commodity.upper())
+        
+        prediction_request = PriceInference(
+            admin1="ADDIS ABABA",
+            market_id=14,
+            commodity_id=1,
+            category="CEREALS",
+            commodity=mapped_commodity,
+            latitude=9.02,
+            longitude=38.75,
+            rfq=0.0
+        )
+        
+        from .forecast import get_prediction
+        result = await get_prediction(fastapi_req, prediction_request)
+        
+        prediction = result.get('prediction', {}).get('price_etb')
+        if prediction:
+            return f"📊 AI Price Forecast for {commodity.title()}: {prediction} ETB"
+        return None
+    except Exception as e:
+        print(f"Prediction error: {e}")
+        return None
+
+def detect_intent(message: str) -> Dict[str, Any]:
+    """Detect user intent from message"""
+    message_lower = message.lower()
+    
+    intents = {
+        "price_prediction": any(word in message_lower for word in ['predict', 'forecast', 'will be', 'future price']),
+        "price_check": any(word in message_lower for word in ['price', 'cost', 'how much']),
+        "farming_tip": any(word in message_lower for word in ['how to', 'plant', 'grow', 'cultivate', 'harvest']),
+        "market_trend": any(word in message_lower for word in ['trend', 'market', 'demand']),
+        "pest_control": any(word in message_lower for word in ['pest', 'disease', 'insect', 'control']),
+        "weather": any(word in message_lower for word in ['weather', 'rain', 'climate', 'season']),
+    }
+    
+    commodities = ['teff', 'maize', 'wheat', 'coffee', 'barley', 'sorghum', 'millet', 'cereal']
+    detected_commodity = next((c for c in commodities if c in message_lower), None)
+    
+    return {
+        "intents": intents,
+        "commodity": detected_commodity,
+        "needs_prediction": intents["price_prediction"] and detected_commodity
+    }
+
 @router.post("/")
 async def stream_chat(request: ChatRequest, fastapi_req: Request):
     """
-    Quadplex RAG Chat Endpoint combining:
-    1. Vector DB (PDF Manuals)
-    2. SQL Database (Local Prices)
-    3. JSON Scraper (Official Daily ECX)
-    4. XGBoost Model (Future Forecasts)
+    Enhanced chat endpoint with intent detection and price predictions
     """
+    db = getattr(fastapi_req.app.state, "vector_db", None)
+    llm = getattr(fastapi_req.app.state, "chat_llm", None)
     
-    db = fastapi_req.app.state.vector_db
-    llm = fastapi_req.app.state.chat_llm
-    price_model = getattr(fastapi_req.app.state, "price_model", None)
-
+    # Detect user intent
+    intent = detect_intent(request.message)
+    
+    # Get market data in parallel
+    market_data, ecx_data = await asyncio.gather(
+        fetch_market_data(),
+        asyncio.to_thread(fetch_daily_ecx_intelligence)
+    )
+    
+    # Get price prediction if needed
+    price_prediction = None
+    if intent["needs_prediction"]:
+        price_prediction = await get_price_prediction(intent["commodity"], fastapi_req)
+    
     if not db or not llm:
-        raise HTTPException(
-            status_code=503, 
-            detail="AI Assistant services are still initializing."
-        )
+        # Fallback response without LLM
+        response_text = f"""🌾 **AgriSmart Farming Assistant**
+
+I'm here to help with Ethiopian agriculture!
+
+**📊 Market Updates:**
+{market_data}
+
+**📈 ECX Daily Report:**
+{ecx_data}
+"""
+        
+        if price_prediction:
+            response_text += f"\n\n{price_prediction}"
+        
+        response_text += """
+
+**💡 You can ask me about:**
+• Crop prices (teff, wheat, coffee, maize)
+• Best planting seasons
+• Pest control methods
+• Market trends and forecasts
+
+What would you like to know?"""
+        
+        return ChatResponse(response=response_text, session_id=request.session_id)
 
     try:
-        if request.message == "INIT_WELCOME":
-            return {
-                "reply": f"Hello {request.user}! I am your AgriSmart Assistant. I can help with official ECX prices, local market rates, and farming techniques. How can I help you today?"
-            }
+        # Build context-aware system prompt
+        system_prompt = f"""You are AgriSmart AI, an expert Ethiopian farming assistant.
 
-        # --- 4. DATA GATHERING (Parallel) ---
-        async def get_pdf_docs():
-            return await asyncio.to_thread(db.similarity_search, request.message, k=2)
+**Current Market Data:**
+{market_data}
 
-        async def get_ai_forecast():
-            if not price_model: return "Forecast engine offline."
-            msg = request.message.lower()
-            # Trigger forecast if commodity mentioned
-            if any(crop in msg for crop in ["maize", "corn", "coffee", "teff"]):
-                from .forecast import get_prediction
-                # Defaulting to ADDIS ABABA for general queries
-                mock_data = PriceInference(
-                    admin1="ADDIS ABABA", market_id=14, commodity_id=1,
-                    category="CEREALS", commodity="MAIZE (WHITE)",
-                    latitude=9.02, longitude=38.75, rfq=0.0
-                )
-                try:
-                    res = await get_prediction(fastapi_req, mock_data)
-                    return f"AI Projection: {res['prediction']['price_etb']} ETB"
-                except:
-                    return "Forecast unavailable for this specific item."
-            return "No specific forecast requested."
+**Official ECX Prices:**
+{ecx_data}
+"""
+        
+        if price_prediction:
+            system_prompt += f"\n**AI Price Prediction:**\n{price_prediction}\n"
+        
+        system_prompt += """
 
-        # Execute all sources
-        docs, market_sql, ai_forecast = await asyncio.gather(
-            get_pdf_docs(), 
-            fetch_market_data(),
-            get_ai_forecast()
+**Instructions:**
+- Be helpful, concise, and practical for Ethiopian farmers
+- Use ETB for all prices
+- Mention specific Ethiopian regions when relevant
+- If you don't know something, say so honestly
+- Keep responses under 150 words when possible
+
+**Guidelines:**
+- For price questions: Reference current market data
+- For planting advice: Consider Ethiopian seasons (Meher, Belg)
+- For pest control: Suggest integrated pest management first
+"""
+
+        # Get conversation history
+        history = []
+        if request.session_id and request.session_id in conversation_history:
+            history = conversation_history[request.session_id][-10:]  # Last 10 messages
+        
+        # Build messages
+        messages = [
+            {"role": "system", "content": system_prompt}
+        ]
+        
+        # Add conversation history
+        for h in history:
+            messages.append({"role": h.get("role", "user"), "content": h.get("content", "")})
+        
+        # Add current message
+        messages.append({"role": "user", "content": request.message})
+        
+        # Generate response
+        response = await llm.ainvoke(messages)
+        
+        # Store in conversation history
+        if request.session_id:
+            if request.session_id not in conversation_history:
+                conversation_history[request.session_id] = []
+            conversation_history[request.session_id].append({"role": "user", "content": request.message})
+            conversation_history[request.session_id].append({"role": "assistant", "content": response.content})
+        
+        return ChatResponse(
+            response=response.content,
+            session_id=request.session_id,
+            timestamp=datetime.now().isoformat()
         )
         
-        # Scraper data (synchronous read is fast enough)
-        ecx_daily = fetch_daily_ecx_intelligence()
-
-        # --- 5. CONTEXT PREPARATION ---
-        sources = set()
-        pdf_texts = []
-        for d in docs:
-            pdf_texts.append(d.page_content)
-            source_name = os.path.basename(d.metadata.get("source", "Manual"))
-            page = d.metadata.get("page", "N/A")
-            sources.add(f"{source_name} (Pg. {page})")
-
-        # --- 6. HYBRID PROMPT ---
-        system_prompt = (
-            "You are the AgriSmart AI Expert, an Ethiopian Agricultural Assistant.\n"
-            "STRICT DATA SOURCE GUIDELINES:\n"
-            "1. For OFFICIAL DAILY ECX PRICES: Use 'DAILY ECX REPORT'. This is the most reliable for exporters.\n"
-            "2. For LOCAL MARKET PRICES: Use 'LOCAL MARKET FEED'.\n"
-            "3. For TRENDS/FORECASTS: Use 'AI PRICE PROJECTION'.\n"
-            "4. For FARMING TECHNIQUES: Use 'FARMING MANUAL CONTEXT'.\n"
-            "Currency is always ETB. Keep answers helpful and concise.\n\n"
-            f"--- DAILY ECX REPORT (OFFICIAL) ---\n{ecx_daily}\n\n"
-            f"--- LOCAL MARKET FEED (SQL) ---\n{market_sql}\n\n"
-            f"--- AI PRICE PROJECTION ---\n{ai_forecast}\n\n"
-            f"--- FARMING MANUAL CONTEXT ---\n{os.linesep.join(pdf_texts)}"
+    except Exception as e:
+        print(f"❌ Chat error: {e}")
+        return ChatResponse(
+            response=f"I'm here to help with farming! You asked: '{request.message[:100]}'. Please try asking about specific crops or market prices.",
+            session_id=request.session_id
         )
 
-        # --- 7. STREAMING GENERATOR ---
-        async def generate():
-            async for chunk in llm.astream([
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": request.message},
-            ]):
-                content = getattr(chunk, "content", "")
-                if content:
-                    yield content
+@router.get("/health")
+async def chat_health():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "service": "chat",
+        "timestamp": datetime.now().isoformat(),
+        "has_vector_db": True,
+        "has_llm": True
+    }
 
-            # Footer with Data Source Transparency
-            yield "\n\n---\n**Data Sources & Accuracy:**\n"
-            yield "• 📈 Official Daily ECX Report (Web Scraper)\n"
-            yield "• 📡 Local Market Database (PostgreSQL)\n"
-            yield "• 🤖 XGBoost Intelligence Engine\n"
-            for s in sources:
-                yield f"• 📄 {s}\n"
+@router.post("/test")
+async def test_chat(request: ChatRequest):
+    """Simple test endpoint to verify routing works"""
+    return {
+        "message": "Chat router is working",
+        "received": request.message,
+        "user": request.user,
+        "timestamp": datetime.now().isoformat()
+    }
 
-        return StreamingResponse(generate(), media_type="text/plain")
-
-    except Exception as e:
-        print(f"❌ Chat Error: {e}")
-        raise HTTPException(status_code=500, detail="AI Assistant encountered an error.")
+@router.delete("/history/{session_id}")
+async def clear_history(session_id: str):
+    """Clear conversation history for a session"""
+    if session_id in conversation_history:
+        del conversation_history[session_id]
+    return {"message": "History cleared", "session_id": session_id}
