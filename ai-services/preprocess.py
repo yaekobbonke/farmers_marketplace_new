@@ -22,7 +22,7 @@ def run_full_merge():
         rain = pd.read_csv('data/rainfall_chirps.csv')
         fx = pd.read_csv('data/usd_etb_exchange.csv')
     except FileNotFoundError as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         return
 
     # 2. ALIGN DATES
@@ -37,12 +37,12 @@ def run_full_merge():
     # 4. MERGE 1: Prices + National Trends (WFP ALPS)
     df = pd.merge(prices, alps[['merge_date', 'comm_key', 'MonthlyChangeSA', 'YoYChangeMonth', 'PriceTrendMonth']], 
                   on=['merge_date', 'comm_key'], how='left')
-    print("✅ Pillar 1: Economic Trends Merged.")
+    print("Pillar 1: Economic Trends Merged.")
 
     # 5. MERGE 2: Add Market Trust Scores (Deduplicated to prevent MemoryError)
     trust_unique = trust[['mkt_name', 'index_confidence_score', 'spatially_interpolated']].drop_duplicates(subset=['mkt_name'])
     df = pd.merge(df, trust_unique, left_on='market', right_on='mkt_name', how='left')
-    print("✅ Pillar 2: Market Metadata Merged.")
+    print("Pillar 2: Market Metadata Merged.")
 
     # 6. MERGE 3: Add Rainfall (PCODE to Region Mapping)
     print("🛰️  Mapping Rainfall PCODEs to Ethiopian Regions...")
@@ -59,13 +59,13 @@ def run_full_merge():
     rain_monthly = rain.groupby(['merge_date', 'admin1_upper'])[['rfq', 'r3q']].mean().reset_index()
 
     df = pd.merge(df, rain_monthly, on=['merge_date', 'admin1_upper'], how='left')
-    print("✅ Pillar 3: Climate Anomalies Merged.")
+    print("Pillar 3: Climate Anomalies Merged.")
 
     # 7. MERGE 4: Add Annual Exchange Rate
     df['year'] = pd.to_datetime(df['date']).dt.year
     df = pd.merge(df, fx[['Year', 'Value']], left_on='year', right_on='Year', how='left')
     df.rename(columns={'Value': 'exchange_rate_usd'}, inplace=True)
-    print("✅ Pillar 4: Macro-Exchange Rates Merged.")
+    print("Pillar 4: Macro-Exchange Rates Merged.")
 
     # 8. FINAL CLEANUP & IMPUTATION
     # Fill missing values for old records (pre-2014) or missing regions
