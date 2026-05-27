@@ -16,7 +16,7 @@ def get_live_ecx_intelligence():
         article_link = base_url + latest_item.find('a')['href']
         report_date = latest_item.find('a').text.split('–')[-1].strip()
         
-        print(f"✅ Found Report for: {report_date}")
+        print(f"Found Report for: {report_date}")
         
         # 2. Scrape the actual price table inside the article
         print("📡 Step 2: Extracting price data...")
