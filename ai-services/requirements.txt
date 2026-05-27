@@ -16,5 +16,5 @@ scikit-learn
 beautifulsoup4
 requests
 python-dotenv
-node-cron
+
 bs4
