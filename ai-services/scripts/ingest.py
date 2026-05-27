@@ -41,7 +41,7 @@ def run_ingestion():
         persist_directory=CHROMA_PATH
     )
 
-    print(f"✅ Success! Knowledge base created at {CHROMA_PATH}")
+    print(f"Success! Knowledge base created at {CHROMA_PATH}")
 
 if __name__ == "__main__":
     run_ingestion()
