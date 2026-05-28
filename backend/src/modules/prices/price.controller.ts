@@ -1,15 +1,9 @@
 import { Request, Response } from 'express';
 import { PriceService } from './price.service';
+import { MarketSnapshot } from './price.types';
 
 // Define the expected return type
-interface MarketSnapshot {
-  commodity: string;
-  price: number;
-  market: string;
-  source: string;
-  unit: string;
-  recordedAt: string;
-}
+
 
 export class PriceController {
   static async getPrediction(req: Request, res: Response) {
