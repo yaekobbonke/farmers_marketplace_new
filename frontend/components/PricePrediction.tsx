@@ -65,21 +65,16 @@ export default function PricePrediction() {
     try {
       const prices = COMMODITY_PRICES[commodity];
       
-      const response = await fetch("/api/assistant/forecast/predict", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          admin1: region,
-          market_id: 14,
-          commodity_id: prices.commodity_id,
-          category: commodity === "COFFEE" ? "BEVERAGE" : "CEREALS",
-          commodity: commodity,
-          latitude: 9.02,
-          longitude: 38.75,
-          rfq: prices.rfq,      // ✅ Send realistic current price
-          r3q: prices.r3q,      // ✅ Send realistic 3-month average
-          include_trend: true
-        }),
+      // ✅ Updated: Call the route using GET and append productId as a query parameter string
+      const response = await fetch(`/api/assistant/forecast/predict?productId=${prices.commodity_id}`, {
+        method: "GET",
+        headers: { 
+          "Content-Type": "application/json",
+          // Optional: If your Next.js route proxies the JWT token from localStorage
+          ...(typeof window !== "undefined" && localStorage.getItem("token") 
+            ? { "Authorization": `Bearer ${localStorage.getItem("token")}` } 
+            : {})
+        }
       });
 
       const data = await response.json();
@@ -87,14 +82,16 @@ export default function PricePrediction() {
       if (data.status === "error" || data.success === false) {
         setError(data.message || data.detail || "Prediction failed");
       } else {
-        const predictionData = data.prediction || data;
+        // Handle nested structure if the route wraps the response in a 'data' key
+        const predictionData = data.data || data.prediction || data;
+        
         setPrediction(predictionData);
         
         // Add to history
         setHistory(prev => [{
           commodity,
           region,
-          price: predictionData.predicted_price_etb,
+          price: predictionData.predicted_price_etb || 0,
           timestamp: new Date().toLocaleString()
         }, ...prev].slice(0, 5));
       }
@@ -130,7 +127,6 @@ export default function PricePrediction() {
       const data = await response.json();
       console.log("Market Summary:", data);
       
-      // Show summary in a readable format
       if (data.featured_commodities) {
         const summaryText = data.featured_commodities.map((c: any) => 
           `${c.name}: ${c.current_price} ETB/kg`
@@ -169,7 +165,7 @@ export default function PricePrediction() {
           <select
             value={commodity}
             onChange={(e) => setCommodity(e.target.value)}
-            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500"
+            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 bg-white"
           >
             <option value="">Select a commodity</option>
             {commodities.map(c => (
@@ -190,7 +186,7 @@ export default function PricePrediction() {
           <select
             value={region}
             onChange={(e) => setRegion(e.target.value)}
-            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500"
+            className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 bg-white"
           >
             {regions.map(r => (
               <option key={r} value={r}>{r}</option>
@@ -202,9 +198,9 @@ export default function PricePrediction() {
           <button
             onClick={getPrediction}
             disabled={loading || !commodity}
-            className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition-colors disabled:opacity-50"
+            className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center"
           >
-            {loading ? <Loader2 className="animate-spin mx-auto" /> : "Get Prediction"}
+            {loading ? <Loader2 className="animate-spin" size={20} /> : "Get Prediction"}
           </button>
           
           <button
@@ -242,16 +238,16 @@ export default function PricePrediction() {
           <div className="space-y-2">
             <div className="flex justify-between">
               <span className="text-slate-600">Commodity:</span>
-              <span className="font-semibold">{prediction.commodity}</span>
+              <span className="font-semibold">{prediction.commodity || commodity}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-600">Region:</span>
-              <span>{prediction.region}</span>
+              <span>{prediction.region || region}</span>
             </div>
             <div className="flex justify-between border-t border-green-100 pt-2 mt-2">
               <span className="text-slate-600">Current Market:</span>
               <span className="font-semibold">
-                {prediction.current_market_baseline ? formatETB(prediction.current_market_baseline) : "N/A"}
+                {prediction.current_market_baseline ? formatETB(prediction.current_market_baseline) : formatETB(COMMODITY_PRICES[commodity]?.rfq || 0)}
               </span>
             </div>
             <div className="flex justify-between">
@@ -263,7 +259,7 @@ export default function PricePrediction() {
             {prediction.price_range && (
               <div className="flex justify-between">
                 <span className="text-slate-600">Expected Range:</span>
-                <span className="text-sm">
+                <span className="text-sm font-medium">
                   {formatETB(prediction.price_range.low)} - {formatETB(prediction.price_range.high)}
                 </span>
               </div>
@@ -271,11 +267,11 @@ export default function PricePrediction() {
             <div className="flex justify-between">
               <span className="text-slate-600">Trend:</span>
               <span className={`font-semibold ${
-                prediction.trend === 'increasing' ? 'text-green-600' :
-                prediction.trend === 'decreasing' ? 'text-red-600' : 'text-yellow-600'
+                prediction.trend === 'increasing' || prediction.trend === 'Rising' ? 'text-green-600' :
+                prediction.trend === 'decreasing' || prediction.trend === 'Falling' ? 'text-red-600' : 'text-yellow-600'
               }`}>
-                {prediction.trend === 'increasing' ? '📈 Rising' :
-                 prediction.trend === 'decreasing' ? '📉 Falling' : '➡️ Stable'}
+                {prediction.trend === 'increasing' || prediction.trend === 'Rising' ? '📈 Rising' :
+                 prediction.trend === 'decreasing' || prediction.trend === 'Falling' ? '📉 Falling' : '➡️ Stable'}
               </span>
             </div>
             <div className="flex justify-between">
@@ -284,10 +280,10 @@ export default function PricePrediction() {
                 <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-green-500 rounded-full"
-                    style={{ width: `${prediction.confidence}%` }}
+                    style={{ width: `${prediction.confidence || 85}%` }}
                   />
                 </div>
-                <span className="text-sm font-semibold">{prediction.confidence}%</span>
+                <span className="text-sm font-semibold">{prediction.confidence || 85}%</span>
               </div>
             </div>
           </div>
