@@ -1,29 +1,8 @@
 import { PriceProvider } from "./price.provider";
 import { aiClient } from "../../lib/ai-client";
+import { MarketSnapshot } from "./price.types";
+import { AIPredictionResult } from "./price.types";
 
-// ======================================================
-// TYPES (FINAL CONTRACT)
-// ======================================================
-
-interface AIPredictionResult {
-  product: string;
-  current: number;
-  market_average: number;
-  predicted: number | null;
-  trend: string;
-  confidence: string;
-  error?: string;
-}
-
-interface MarketSnapshot {
-  id: string | number;
-  productName: string;
-  price: number;
-  location: string;
-  source: string;
-  unit: string;
-  recordedAt: string;
-}
 
 export class PriceService {
 
@@ -125,11 +104,11 @@ export class PriceService {
         id: item.id,
 
         // 🔥 STRICT FIELD (NO FALLBACK CHAOS)
-        productName: item.productName,
+        commodity: item.productName,
 
         price: Number(item.price),
 
-        location: item.location,
+        market: item.location,
 
         source: item.source,
 
