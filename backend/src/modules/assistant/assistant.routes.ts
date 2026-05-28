@@ -4,11 +4,9 @@ import { authenticate, requireRole } from "../../middleware/authMiddleware";
 
 const router = Router();
 
+router.use(authenticate);
 
 router.post("/chat", AssistantController.chat);
-
-
-router.use(authenticate);
 
 router.get("/insights", AssistantController.getFarmerInsights);
 
