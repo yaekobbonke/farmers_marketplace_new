@@ -91,4 +91,34 @@ export class AssistantProvider {
       throw error;
     }
   }
+
+  static async getPricePrediction(data: any) {
+    const FASTAPI_URL =
+    
+      process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
+
+    const endpoint = `${FASTAPI_URL}/api/v1/forecast/predict`;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(
+          `Prediction service error: ${response.status} - ${text}`
+        );
+      }
+
+      return await response.json();
+    } catch (error: any) {
+      console.error("Prediction fetch error:", error);
+      throw error;
+    }
+  }
 }
