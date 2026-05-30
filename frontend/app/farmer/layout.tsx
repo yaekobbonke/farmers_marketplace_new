@@ -229,7 +229,7 @@ function AIAssistantButton() {
 
     try {
       // Call the Next.js API route
-      const response = await fetch("/api/assistant/chat", {
+      const response = await fetch("/api/assistants/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
