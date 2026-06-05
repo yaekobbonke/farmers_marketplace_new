@@ -24,7 +24,7 @@ export class PriceController {
         data: result
       });
     } catch (error: any) {
-      console.error("❌ Prediction Controller Error:", error.message);
+      console.error("Prediction Controller Error:", error.message);
       return res.status(500).json({
         success: false,
         message: error.message || "Failed to generate AI price prediction"
