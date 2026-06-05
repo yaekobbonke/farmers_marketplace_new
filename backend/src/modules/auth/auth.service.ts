@@ -2,19 +2,24 @@ import prisma from "../../config/prisma";
 import { hashPassword, comparePassword } from "../../utils/bcrypt";
 import { RegisterInput, LoginInput } from "./auth.types";
 import { signToken } from "../../utils/jwt";
-import { Role } from "@prisma/client"; // ✅ Import the Role enum from Prisma
+import { Role } from "@prisma/client"; 
+import { registerSchema, loginSchema } from "./auth.schema";
 
 export class AuthService {
-  // ✅ Register method with proper Role enum
+  // ✅ Register method with validation and proper Role enum
   static async register(input: RegisterInput): Promise<{ userId: number }> {
-    const hashed = await hashPassword(input.password);
+    // ✅ STEP 1: Validate input with Zod schema
+    const validated = registerSchema.parse(input);
+    
+    // ✅ STEP 2: Hash the validated password
+    const hashed = await hashPassword(validated.password);
 
     try {
-      // ✅ Convert role string to Role enum
+      // ✅ STEP 3: Convert role string to Role enum
       let roleEnum: Role = Role.BUYER;
-      if (input.role?.toUpperCase() === "ADMIN") {
+      if (validated.role?.toUpperCase() === "ADMIN") {
         roleEnum = Role.ADMIN;
-      } else if (input.role?.toUpperCase() === "FARMER") {
+      } else if (validated.role?.toUpperCase() === "FARMER") {
         roleEnum = Role.FARMER;
       } else {
         roleEnum = Role.BUYER;
@@ -22,13 +27,13 @@ export class AuthService {
 
       const user = await prisma.user.create({
         data: {
-          first_name: input.first_name,
-          last_name: input.last_name,
-          location: input.location,
-          email: input.email.toLowerCase().trim(),
-          phone: input.phone,
+          first_name: validated.first_name,
+          last_name: validated.last_name,
+          location: validated.location,
+          email: validated.email.toLowerCase().trim(),
+          phone: validated.phone,
           password: hashed,
-          role: roleEnum, // ✅ Use the Role enum
+          role: roleEnum,
         },
         select: { id: true },
       });
@@ -41,10 +46,13 @@ export class AuthService {
     }
   }
 
-  // ✅ Login method - ensures role is uppercase in token
+  // ✅ Login method with validation - ensures role is uppercase in token
   static async login(input: LoginInput): Promise<{ token: string; user: any }> {
+    // ✅ Validate login input
+    const validated = loginSchema.parse(input);
+    
     const user = await prisma.user.findUnique({
-      where: { email: input.email.toLowerCase().trim() },
+      where: { email: validated.email.toLowerCase().trim() },
       select: {
         id: true,
         email: true,
@@ -65,7 +73,7 @@ export class AuthService {
       throw new Error("ACCOUNT_SUSPENDED");
     }
 
-    const valid = await comparePassword(input.password, user.password);
+    const valid = await comparePassword(validated.password, user.password);
     if (!valid) {
       throw new Error("INVALID_CREDENTIALS");
     }
