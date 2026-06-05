@@ -1,22 +1,23 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { useCart } from "@/contexts/CartContext";
 import { 
   User, Phone, MapPin, ArrowLeft, Sprout, 
   Scale, ShieldCheck, TrendingUp, 
-  BarChart3, Loader2, Package
+  BarChart3, Loader2, Package, ShoppingCart, 
+  Plus, Minus, CheckCircle
 } from "lucide-react";
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import api from "@/lib/api";
 
-// Define the Interface for better Type Safety
 interface Product {
   id: number;
   name: string;
   price: number;
   unit: string;
   location?: string;
+  stockQuantity?: number;
   category?: { name: string };
   farmer?: {
     id: number;
@@ -31,27 +32,20 @@ interface Product {
   }>;
 }
 
-interface SimilarProduct {
-  id: number;
-  name: string;
-  price: number;
-  unit: string;
-  location: string;
-  farmer: {
-    first_name: string;
-    last_name: string;
-  };
-  category?: { name: string };
-}
-
 export default function ProductDetailsPage() {
   const { id } = useParams();
   const router = useRouter();
+  const { addToCart, items: cartItems } = useCart();
+  
   const [product, setProduct] = useState<Product | null>(null);
-  const [similarProducts, setSimilarProducts] = useState<SimilarProduct[]>([]);
+  const [similarProducts, setSimilarProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadingSimilar, setLoadingSimilar] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(null);
+  const [quantity, setQuantity] = useState(1);
+  const [addedToCart, setAddedToCart] = useState(false);
+
+  // Check if product is already in cart
+  const isInCart = cartItems.some(item => item.productId === product?.id);
 
   useEffect(() => {
     const fetchProductDetails = async () => {
@@ -65,19 +59,23 @@ export default function ProductDetailsPage() {
         const response = await fetch(`${API_BASE}/products/${id}`);
         
         if (!response.ok) {
-          if (response.status === 404) {
-            throw new Error("Product not found");
-          }
-          throw new Error(`Server error: ${response.status}`);
+          throw new Error("Product not found");
         }
 
         const result = await response.json();
         const productData = result.data || result;
-        setProduct(productData);
         
-        // Fetch similar products after getting the product
+        // ✅ Ensure stockQuantity exists (default to 10 if not present)
+        setProduct({
+          ...productData,
+          stockQuantity: productData.stockQuantity ?? 10
+        });
+        
+        // Fetch similar products
         if (productData.id) {
-          fetchSimilarProducts(productData.id);
+          const similarResponse = await fetch(`${API_BASE}/search/similar/${productData.id}?limit=4`);
+          const similarResult = await similarResponse.json();
+          setSimilarProducts(similarResult.data || []);
         }
       } catch (err: any) {
         console.error("Fetch Error:", err);
@@ -90,16 +88,25 @@ export default function ProductDetailsPage() {
     fetchProductDetails();
   }, [id]);
 
-  const fetchSimilarProducts = async (productId: number) => {
-    try {
-      setLoadingSimilar(true);
-      const response = await api.get(`/search/similar/${productId}?limit=4`);
-      setSimilarProducts(response.data.data || []);
-    } catch (error) {
-      console.error("Error fetching similar products:", error);
-    } finally {
-      setLoadingSimilar(false);
+  const handleAddToCart = () => {
+    if (!product) {
+      alert('Product not loaded');
+      return;
     }
+    
+    console.log('Adding to cart:', { product, quantity });
+    addToCart(product, quantity);
+    setAddedToCart(true);
+    
+    setTimeout(() => setAddedToCart(false), 2000);
+  };
+
+  const incrementQuantity = () => {
+    setQuantity(prev => prev + 1);
+  };
+
+  const decrementQuantity = () => {
+    setQuantity(prev => (prev > 1 ? prev - 1 : 1));
   };
 
   const formatETB = (price: number) => {
@@ -111,7 +118,7 @@ export default function ProductDetailsPage() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FDFDFD] gap-4">
         <Loader2 className="animate-spin text-green-600" size={40} />
         <div className="text-center font-black text-slate-300 uppercase tracking-widest">
-          Analyzing Market Data...
+          Loading Product...
         </div>
       </div>
     );
@@ -123,30 +130,18 @@ export default function ProductDetailsPage() {
         <div className="font-black text-red-400 uppercase tracking-widest mb-4">
           {error || "Product Not Found"}
         </div>
-        <div className="flex gap-4">
-          <button
-            onClick={() => router.back()}
-            className="text-sm font-bold underline"
-          >
-            Go Back
-          </button>
-          <Link href="/marketplace" className="text-sm font-bold underline text-green-600">
-            Return to Market
-          </Link>
-        </div>
+        <Link href="/marketplace" className="text-sm font-bold underline text-green-600">
+          Return to Market
+        </Link>
       </div>
     );
   }
 
-  // --- REAL DATA MAPPING ---
   const farmerName = product.farmer?.first_name 
     ? `${product.farmer.first_name} ${product.farmer.last_name || ''}`
     : "Verified Farmer";
   const farmerPhone = product.farmer?.phone || "Contact via App";
-  const farmerLocation = product.location || product.farmer?.address || "Regional Ethiopia";
-  const unit = product.unit || "qtl";
-  const categoryName = product.category?.name || "Produce";
-  const aiForecast = product.pricePredictions?.[0]?.predictedPrice || 0;
+  const unit = product.unit || "kg";
 
   return (
     <div className="min-h-screen bg-[#FDFDFD] pb-20">
@@ -166,66 +161,80 @@ export default function ProductDetailsPage() {
               <h1 className="text-5xl font-black text-slate-900 tracking-tighter capitalize">
                 {product.name}
               </h1>
-              <div className="flex flex-wrap gap-3">
-                <span className="px-4 py-2 bg-slate-100 rounded-xl text-slate-600 font-bold text-xs uppercase tracking-tight">
-                  Type: {categoryName}
-                </span>
-                <span className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl font-bold text-xs uppercase tracking-tight border border-blue-100 flex items-center gap-2">
-                  <MapPin size={14} /> {farmerLocation}
-                </span>
+            </div>
+
+            {/* Pricing Card with Cart */}
+            <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm">
+              <div className="space-y-6">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Listing Price</p>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-2xl font-black text-slate-900">ETB</span>
+                      <span className="text-6xl font-black text-slate-900">{product.price?.toLocaleString()}</span>
+                      <span className="text-lg font-bold text-slate-400">/ {unit}</span>
+                    </div>
+                  </div>
+                  
+                  {/* Quantity Selector */}
+                  <div className="flex items-center gap-3 bg-slate-50 rounded-2xl p-2">
+                    <button
+                      onClick={decrementQuantity}
+                      className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
+                    >
+                      <Minus size={18} />
+                    </button>
+                    <span className="text-2xl font-black text-slate-900 min-w-[50px] text-center">
+                      {quantity}
+                    </span>
+                    <button
+                      onClick={incrementQuantity}
+                      className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
+                    >
+                      <Plus size={18} />
+                    </button>
+                    <span className="text-sm text-slate-500 font-medium ml-2">{unit}</span>
+                  </div>
+                </div>
+                
+                {/* Add to Cart Button - Always enabled */}
+                <div className="flex gap-4">
+                  <button
+                    onClick={handleAddToCart}
+                    disabled={addedToCart}
+                    className={`flex-1 py-5 rounded-2xl font-black text-center uppercase tracking-widest text-sm transition-all flex items-center justify-center gap-3 ${
+                      addedToCart
+                        ? 'bg-green-100 text-green-700 cursor-default'
+                        : 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-100 active:scale-95'
+                    }`}
+                  >
+                    {addedToCart ? (
+                      <>
+                        <CheckCircle size={20} />
+                        Added to Cart!
+                      </>
+                    ) : (
+                      <>
+                        <ShoppingCart size={20} />
+                        Add to Cart - ETB {(product.price * quantity).toLocaleString()}
+                      </>
+                    )}
+                  </button>
+                  
+                  {isInCart && (
+                    <button
+                      onClick={() => router.push('/cart')}
+                      className="px-6 py-5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-sm uppercase tracking-widest transition-all"
+                    >
+                      View Cart
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Pricing Card */}
-            <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm flex flex-col md:flex-row justify-between items-center gap-8">
-              <div className="space-y-1">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Listing Price</p>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-black text-slate-900">ETB</span>
-                  <span className="text-6xl font-black text-slate-900">{product.price?.toLocaleString()}</span>
-                  <span className="text-lg font-bold text-slate-400">/ {unit}</span>
-                </div>
-              </div>
-              <div className="h-16 w-[2px] bg-slate-50 hidden md:block" />
-              <div className="text-center md:text-left">
-                <p className="text-[10px] font-black text-blue-500 uppercase tracking-[0.2em] mb-2">Availability</p>
-                <div className="flex items-center gap-3 text-slate-900 font-black text-2xl">
-                  <Scale className="text-slate-300" />
-                  In Stock ({unit})
-                </div>
-              </div>
-            </div>
-
-            {/* AI Insights Section */}
-            {aiForecast > 0 && (
-              <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white relative overflow-hidden">
-                <div className="relative z-10 space-y-6">
-                  <div className="flex items-center gap-2 text-green-400 font-black text-[10px] uppercase tracking-widest">
-                    <BarChart3 size={16} /> XGBoost Intelligence
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div>
-                      <p className="text-slate-400 text-xs font-bold mb-2">Next Week Price Forecast:</p>
-                      <div className="flex items-center gap-3 text-4xl font-black">
-                        <TrendingUp className="text-green-400" size={32} strokeWidth={3} />
-                        ETB {aiForecast.toLocaleString()}
-                      </div>
-                    </div>
-                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Analysis</p>
-                      <p className="text-sm font-medium leading-relaxed">
-                        The current listing is <span className="text-green-400 font-bold">competitive</span> compared to the forecasted regional trend.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Farmer Information Sidebar */}
-          <div className="space-y-6">
-            <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl sticky top-8">
+            {/* Farmer Information Sidebar */}
+            <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl">
               <div className="text-center space-y-4 mb-8">
                 <div className="w-20 h-20 bg-green-100 rounded-3xl flex items-center justify-center mx-auto text-green-600 shadow-inner">
                   <User size={40} strokeWidth={2.5} />
@@ -256,53 +265,6 @@ export default function ProductDetailsPage() {
             </div>
           </div>
         </div>
-
-        {/* Similar Products Section */}
-        {similarProducts.length > 0 && (
-          <div className="mt-16">
-            <div className="flex items-center gap-2 mb-6">
-              <Package size={24} className="text-green-600" />
-              <h2 className="text-2xl font-black text-slate-900">You Might Also Like</h2>
-            </div>
-            
-            {loadingSimilar ? (
-              <div className="flex justify-center py-12">
-                <Loader2 className="animate-spin text-green-600" size={32} />
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-                {similarProducts.map((similarProduct) => (
-                  <Link
-                    key={similarProduct.id}
-                    href={`/marketplace/${similarProduct.id}`}
-                    className="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all border border-slate-100"
-                  >
-                    <div className="p-5">
-                      <div className="w-full h-28 bg-gradient-to-br from-green-100 to-emerald-100 rounded-xl flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
-                        <Package size={36} className="text-green-400" />
-                      </div>
-                      <h3 className="font-bold text-slate-800 text-lg mb-1 line-clamp-1">
-                        {similarProduct.name}
-                      </h3>
-                      <p className="text-sm text-slate-500 mb-2">
-                        {similarProduct.farmer.first_name} {similarProduct.farmer.last_name}
-                      </p>
-                      <div className="flex justify-between items-center">
-                        <p className="text-xl font-bold text-green-600">
-                          {formatETB(similarProduct.price)}
-                        </p>
-                        <p className="text-xs text-slate-400">per {similarProduct.unit}</p>
-                      </div>
-                      <p className="text-xs text-slate-400 mt-2 flex items-center gap-1">
-                        <MapPin size={12} /> {similarProduct.location}
-                      </p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
