@@ -1,6 +1,7 @@
 // app/layout.tsx - COMPLETELY MINIMAL
 import "./globals.css";
 import type { Metadata } from "next";
+import { CartProvider } from '@/contexts/CartContext';
 
 export const metadata: Metadata = {
   title: "Farmers Hub | AI Price Intelligence",
@@ -10,7 +11,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-gray-50">{children}</body>
+      <body className="bg-gray-50"><CartProvider>
+          {children}
+        </CartProvider></body>
     </html>
   );
 }

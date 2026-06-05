@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -67,7 +67,11 @@ export default function BuyerDashboard() {
     wishlistCount: 0,
     savedAmount: 0
   });
+  
+  // Use ref to prevent multiple API calls
+  const hasFetched = useRef(false);
 
+  // Get user from localStorage only once
   useEffect(() => {
     const userStr = localStorage.getItem("user");
     if (!userStr) {
@@ -93,36 +97,38 @@ export default function BuyerDashboard() {
     }
   }, [router]);
 
+  // Fetch data only once
   useEffect(() => {
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+    
     const fetchData = async () => {
       try {
         setLoading(true);
         
-        // Fetch marketplace products (verified only)
-        const productsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api"}/product/marketplace`);
-        const productsData = await productsRes.json();
-        const allProducts = productsData.data || [];
-        setProducts(allProducts);
+        // Use mock data for now (since backend endpoint is 404)
+        const mockProducts = getMockProducts();
         
-        // Set initial recommendations (newest first)
-        setRecommendations(allProducts.slice(0, 6));
+        // Simulate API delay
+        await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Mock stats (replace with actual API calls)
+        setProducts(mockProducts);
+        setRecommendations(mockProducts.slice(0, 6));
+        
         setStats({
           ordersCount: 3,
           wishlistCount: 5,
           savedAmount: 1250
         });
         
-        // Mock recent orders
         setRecentOrders([
           { id: "ORD-001", date: "2024-05-01", total: 450, status: "Delivered", items: 2 },
           { id: "ORD-002", date: "2024-04-28", total: 320, status: "Shipped", items: 1 },
           { id: "ORD-003", date: "2024-04-25", total: 680, status: "Delivered", items: 3 },
         ]);
         
-        // Fetch personalized recommendations
-        await fetchRecommendations();
+        // Try real API if needed (commented out until backend is ready)
+        // await fetchRealProducts();
         
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -134,18 +140,127 @@ export default function BuyerDashboard() {
     fetchData();
   }, []);
 
-  const fetchRecommendations = async () => {
+  const fetchRealProducts = async () => {
     try {
-      setLoadingRecs(true);
-      const response = await api.get("/search/recommendations?limit=6");
-      if (response.data.data && response.data.data.length > 0) {
-        setRecommendations(response.data.data);
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      const response = await fetch(`${apiUrl}/product/marketplace`, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const allProducts = data.data || [];
+        if (allProducts.length > 0) {
+          setProducts(allProducts);
+          setRecommendations(allProducts.slice(0, 6));
+        }
       }
     } catch (error) {
-      console.error("Error fetching recommendations:", error);
-    } finally {
-      setLoadingRecs(false);
+      console.error("Real API failed, using mock data:", error);
     }
+  };
+
+  const getMockProducts = (): Product[] => {
+    return [
+      {
+        id: 1,
+        name: "Fresh Tomatoes",
+        price: 50,
+        quantity: 100,
+        unit: "kg",
+        location: "Addis Ababa",
+        is_verified: true,
+        farmer: {
+          id: 1,
+          first_name: "Alemu",
+          last_name: "Bekele",
+          location: "Addis Ababa"
+        },
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: 2,
+        name: "Organic Potatoes",
+        price: 35,
+        quantity: 200,
+        unit: "kg",
+        location: "Oromia",
+        is_verified: true,
+        farmer: {
+          id: 2,
+          first_name: "Tigist",
+          last_name: "Desta",
+          location: "Oromia"
+        },
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: 3,
+        name: "Fresh Onions",
+        price: 40,
+        quantity: 150,
+        unit: "kg",
+        location: "Amhara",
+        is_verified: true,
+        farmer: {
+          id: 3,
+          first_name: "Bekele",
+          last_name: "Tesfaye",
+          location: "Amhara"
+        },
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: 4,
+        name: "Green Peppers",
+        price: 60,
+        quantity: 80,
+        unit: "kg",
+        location: "Addis Ababa",
+        is_verified: true,
+        farmer: {
+          id: 4,
+          first_name: "Meron",
+          last_name: "Assefa",
+          location: "Addis Ababa"
+        },
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: 5,
+        name: "Fresh Cabbage",
+        price: 25,
+        quantity: 120,
+        unit: "piece",
+        location: "Oromia",
+        is_verified: true,
+        farmer: {
+          id: 5,
+          first_name: "Dawit",
+          last_name: "Mekonnen",
+          location: "Oromia"
+        },
+        createdAt: new Date().toISOString()
+      },
+      {
+        id: 6,
+        name: "Carrots",
+        price: 45,
+        quantity: 90,
+        unit: "kg",
+        location: "Amhara",
+        is_verified: true,
+        farmer: {
+          id: 6,
+          first_name: "Selam",
+          last_name: "Hailu",
+          location: "Amhara"
+        },
+        createdAt: new Date().toISOString()
+      }
+    ];
   };
 
   const formatETB = (val: number) => 
@@ -324,38 +439,43 @@ export default function BuyerDashboard() {
           </div>
         </div>
 
-        {/* Personalized Recommendations Section */}
+        {/* Products Grid */}
         <div>
           <div className="flex justify-between items-center mb-4">
             <div className="flex items-center gap-2">
-              <Sparkles size={20} className="text-purple-500" />
-              <h3 className="text-xl font-black text-slate-900">Recommended for You</h3>
+              <Package size={20} className="text-blue-500" />
+              <h3 className="text-xl font-black text-slate-900">Available Products</h3>
             </div>
-            <Link href="/marketplace" className="text-sm text-blue-600 font-medium hover:underline">
-              View All →
-            </Link>
+            <p className="text-sm text-slate-500">{filteredProducts.length} products found</p>
           </div>
           
-          {loadingRecs ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="animate-spin text-blue-600" size={32} />
-            </div>
-          ) : recommendations.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-              {recommendations.map((product) => (
+          {filteredProducts.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {filteredProducts.map((product) => (
                 <Link 
                   key={product.id} 
                   href={`/marketplace/${product.id}`}
-                  className="group bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all border border-slate-100"
+                  className="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all border border-slate-100"
                 >
-                  <div className="p-4">
-                    <div className="w-full h-24 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-                      <Package size={32} className="text-purple-400" />
+                  <div className="p-5">
+                    <div className="w-full h-32 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+                      <Package size={48} className="text-blue-400" />
                     </div>
-                    <h4 className="font-bold text-slate-800 text-sm line-clamp-1">{product.name}</h4>
-                    <p className="text-xs text-slate-500 mt-1">{product.farmer.first_name} {product.farmer.last_name}</p>
-                    <p className="text-lg font-bold text-green-600 mt-2">{formatETB(product.price)}</p>
-                    <p className="text-xs text-slate-400">per {product.unit}</p>
+                    <h4 className="font-bold text-slate-800 text-lg line-clamp-1">{product.name}</h4>
+                    <div className="flex items-center gap-1 mt-2">
+                      <MapPin size={14} className="text-slate-400" />
+                      <p className="text-xs text-slate-500">{product.farmer.location}</p>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">by {product.farmer.first_name} {product.farmer.last_name}</p>
+                    <div className="mt-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-2xl font-bold text-green-600">{formatETB(product.price)}</p>
+                        <p className="text-xs text-slate-400">per {product.unit}</p>
+                      </div>
+                      <button className="px-3 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors">
+                        Buy Now
+                      </button>
+                    </div>
                   </div>
                 </Link>
               ))}
@@ -363,8 +483,8 @@ export default function BuyerDashboard() {
           ) : (
             <div className="bg-white rounded-2xl p-12 text-center border border-slate-100">
               <Package size={48} className="mx-auto mb-3 text-slate-300" />
-              <p className="text-slate-500">No recommendations available yet</p>
-              <p className="text-xs text-slate-400 mt-1">Start shopping to get personalized recommendations</p>
+              <p className="text-slate-500">No products found</p>
+              <p className="text-xs text-slate-400 mt-1">Try adjusting your search or filter</p>
             </div>
           )}
         </div>
@@ -413,7 +533,7 @@ export default function BuyerDashboard() {
                     </tr>
                   ))}
                 </tbody>
-               </table>
+              </table>
             </div>
           </div>
         </div>
