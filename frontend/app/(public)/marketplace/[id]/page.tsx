@@ -10,6 +10,7 @@ import {
   BarChart3, Loader2, Package, ShoppingCart, 
   Plus, Minus, CheckCircle
 } from "lucide-react";
+import api from "@/lib/api";
 
 interface Product {
   id: number;
@@ -17,7 +18,9 @@ interface Product {
   price: number;
   unit: string;
   location?: string;
+  quantity?: number;
   stockQuantity?: number;
+  is_verified?: boolean;
   category?: { name: string };
   farmer?: {
     id: number;
@@ -25,6 +28,7 @@ interface Product {
     last_name: string;
     phone: string;
     address?: string;
+    location?: string;
   };
   pricePredictions?: Array<{
     predictedPrice: number;
@@ -40,7 +44,7 @@ export default function ProductDetailsPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [similarProducts, setSimilarProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [addedToCart, setAddedToCart] = useState(false);
 
@@ -55,38 +59,73 @@ export default function ProductDetailsPage() {
         setLoading(true);
         setError(null);
         
-        const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-        const response = await fetch(`${API_BASE}/products/${id}`);
+        // Fetch product details using api client
+        const response = await api.get(`/products/${id}`);
         
-        if (!response.ok) {
+        // Extract product data from response
+        let productData = null;
+        if (response.data?.success && response.data?.data) {
+          productData = response.data.data;
+        } else if (response.data?.data) {
+          productData = response.data.data;
+        } else if (response.data) {
+          productData = response.data;
+        }
+        
+        if (!productData) {
           throw new Error("Product not found");
         }
-
-        const result = await response.json();
-        const productData = result.data || result;
         
-        // ✅ Ensure stockQuantity exists (default to 10 if not present)
+        // Ensure stockQuantity exists
+        const stockQty = productData.stockQuantity ?? productData.quantity ?? 10;
+        
         setProduct({
           ...productData,
-          stockQuantity: productData.stockQuantity ?? 10
+          stockQuantity: stockQty,
+          quantity: stockQty
         });
         
-        // Fetch similar products
-        if (productData.id) {
-          const similarResponse = await fetch(`${API_BASE}/search/similar/${productData.id}?limit=4`);
-          const similarResult = await similarResponse.json();
-          setSimilarProducts(similarResult.data || []);
+        // Fetch similar products using native fetch to avoid interceptor logging
+        const token = localStorage.getItem("token");
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+        
+        try {
+          const similarResponse = await fetch(`${apiUrl}/products/${id}/similar?limit=4`, {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          
+          if (similarResponse.ok) {
+            const similarResult = await similarResponse.json();
+            setSimilarProducts(similarResult?.data || []);
+          } else {
+            // Silently fail - endpoint doesn't exist
+            setSimilarProducts([]);
+          }
+        } catch (similarError) {
+          // Silently fail - network error or endpoint doesn't exist
+          setSimilarProducts([]);
         }
+        
       } catch (err: any) {
         console.error("Fetch Error:", err);
-        setError(err.message || "Failed to load product");
+        if (err.response?.status === 404) {
+          setError("Product not found");
+        } else if (err.response?.status === 401) {
+          setError("Please login to view product details");
+          router.push("/login");
+        } else {
+          setError(err.message || "Failed to load product");
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchProductDetails();
-  }, [id]);
+  }, [id, router]);
 
   const handleAddToCart = () => {
     if (!product) {
@@ -94,15 +133,27 @@ export default function ProductDetailsPage() {
       return;
     }
     
-    console.log('Adding to cart:', { product, quantity });
-    addToCart(product, quantity);
+    const cartProduct = {
+      id: product.id,
+      productId: product.id,
+      name: product.name,
+      price: product.price,
+      quantity: quantity,
+      unit: product.unit,
+      image: product.name
+    };
+    
+    addToCart(cartProduct, quantity);
     setAddedToCart(true);
     
     setTimeout(() => setAddedToCart(false), 2000);
   };
 
   const incrementQuantity = () => {
-    setQuantity(prev => prev + 1);
+    const maxQty = product?.stockQuantity || product?.quantity || 10;
+    if (quantity < maxQty) {
+      setQuantity(prev => prev + 1);
+    }
   };
 
   const decrementQuantity = () => {
@@ -142,6 +193,7 @@ export default function ProductDetailsPage() {
     : "Verified Farmer";
   const farmerPhone = product.farmer?.phone || "Contact via App";
   const unit = product.unit || "kg";
+  const stockQuantity = product.stockQuantity || product.quantity || 10;
 
   return (
     <div className="min-h-screen bg-[#FDFDFD] pb-20">
@@ -157,10 +209,26 @@ export default function ProductDetailsPage() {
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-green-600 font-black text-[10px] uppercase tracking-[0.2em]">
                 <Sprout size={14} strokeWidth={3} /> Verified Database Record
+                {product.is_verified && (
+                  <span className="inline-flex items-center gap-1 ml-2 bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-[8px]">
+                    <CheckCircle size={10} /> Verified
+                  </span>
+                )}
               </div>
               <h1 className="text-5xl font-black text-slate-900 tracking-tighter capitalize">
                 {product.name}
               </h1>
+              {product.location && (
+                <div className="flex items-center gap-2 text-slate-500">
+                  <MapPin size={16} />
+                  <span className="text-sm">{product.location}</span>
+                </div>
+              )}
+              {product.category?.name && (
+                <div className="inline-block bg-slate-100 rounded-full px-3 py-1 text-xs font-medium text-slate-600">
+                  {product.category.name}
+                </div>
+              )}
             </div>
 
             {/* Pricing Card with Cart */}
@@ -189,22 +257,40 @@ export default function ProductDetailsPage() {
                     </span>
                     <button
                       onClick={incrementQuantity}
-                      className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
+                      disabled={quantity >= stockQuantity}
+                      className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Plus size={18} />
                     </button>
-                    <span className="text-sm text-slate-500 font-medium ml-2">{unit}</span>
+                    <span className="text-sm text-slate-500 font-medium ml-2">
+                      {unit} (Max: {stockQuantity})
+                    </span>
                   </div>
                 </div>
                 
-                {/* Add to Cart Button - Always enabled */}
+                {/* Stock Status */}
+                {stockQuantity < 5 && stockQuantity > 0 && (
+                  <div className="text-sm text-orange-600 bg-orange-50 p-3 rounded-xl">
+                    ⚠️ Only {stockQuantity} {unit} left in stock!
+                  </div>
+                )}
+                
+                {stockQuantity === 0 && (
+                  <div className="text-sm text-red-600 bg-red-50 p-3 rounded-xl">
+                    ❌ Out of stock
+                  </div>
+                )}
+                
+                {/* Add to Cart Button */}
                 <div className="flex gap-4">
                   <button
                     onClick={handleAddToCart}
-                    disabled={addedToCart}
+                    disabled={addedToCart || stockQuantity === 0}
                     className={`flex-1 py-5 rounded-2xl font-black text-center uppercase tracking-widest text-sm transition-all flex items-center justify-center gap-3 ${
                       addedToCart
                         ? 'bg-green-100 text-green-700 cursor-default'
+                        : stockQuantity === 0
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                         : 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-100 active:scale-95'
                     }`}
                   >
@@ -213,10 +299,15 @@ export default function ProductDetailsPage() {
                         <CheckCircle size={20} />
                         Added to Cart!
                       </>
+                    ) : stockQuantity === 0 ? (
+                      <>
+                        <Package size={20} />
+                        Out of Stock
+                      </>
                     ) : (
                       <>
                         <ShoppingCart size={20} />
-                        Add to Cart - ETB {(product.price * quantity).toLocaleString()}
+                        Add to Cart - {formatETB(product.price * quantity)}
                       </>
                     )}
                   </button>
@@ -232,39 +323,73 @@ export default function ProductDetailsPage() {
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Farmer Information Sidebar */}
-            <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl">
-              <div className="text-center space-y-4 mb-8">
-                <div className="w-20 h-20 bg-green-100 rounded-3xl flex items-center justify-center mx-auto text-green-600 shadow-inner">
-                  <User size={40} strokeWidth={2.5} />
-                </div>
-                <h2 className="text-2xl font-black text-slate-900 tracking-tight">{farmerName}</h2>
-                <div className="flex items-center justify-center gap-1 text-blue-600 font-black text-[10px] uppercase tracking-tighter">
-                  <ShieldCheck size={14} /> Registered Vendor
-                </div>
+          {/* Farmer Information Sidebar */}
+          <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl">
+            <div className="text-center space-y-4 mb-8">
+              <div className="w-20 h-20 bg-green-100 rounded-3xl flex items-center justify-center mx-auto text-green-600 shadow-inner">
+                <User size={40} strokeWidth={2.5} />
+              </div>
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight">{farmerName}</h2>
+              <div className="flex items-center justify-center gap-1 text-blue-600 font-black text-[10px] uppercase tracking-tighter">
+                <ShieldCheck size={14} /> Registered Vendor
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                  <Phone size={10} /> Verified Number
+                </p>
+                <p className="text-lg font-black text-slate-900">{farmerPhone}</p>
               </div>
               
-              <div className="space-y-4">
+              {product.farmer?.location && (
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <Phone size={10} /> Verified Number
+                    <MapPin size={10} /> Farm Location
                   </p>
-                  <p className="text-lg font-black text-slate-900">{farmerPhone}</p>
+                  <p className="text-sm font-medium text-slate-700">{product.farmer.location}</p>
                 </div>
-              </div>
+              )}
+            </div>
 
-              <div className="mt-8">
+            <div className="mt-8">
+              {farmerPhone !== "Contact via App" && (
                 <a 
-                  href={`tel:${farmerPhone}`} 
+                  href={`tel:${farmerPhone.replace(/\s/g, '')}`} 
                   className="w-full py-5 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-black text-center block uppercase tracking-widest text-xs transition-all active:scale-95 shadow-lg shadow-green-100"
                 >
                   Call Farmer
                 </a>
-              </div>
+              )}
             </div>
           </div>
         </div>
+
+        {/* Similar Products Section - Only show if we have products */}
+        {similarProducts.length > 0 && (
+          <div className="mt-16">
+            <h2 className="text-2xl font-black text-slate-900 mb-6">Similar Products</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {similarProducts.map((similar: any) => (
+                <Link 
+                  key={similar.id} 
+                  href={`/marketplace/${similar.id}`}
+                  className="bg-white rounded-2xl p-4 border border-slate-100 hover:shadow-lg transition-all"
+                >
+                  <div className="w-full h-24 bg-gradient-to-br from-green-100 to-emerald-100 rounded-xl flex items-center justify-center mb-3">
+                    <Package size={32} className="text-green-500" />
+                  </div>
+                  <h3 className="font-bold text-slate-800 text-sm line-clamp-1">{similar.name}</h3>
+                  <p className="text-lg font-bold text-green-600">{formatETB(similar.price)}</p>
+                  <p className="text-xs text-slate-400">per {similar.unit || 'kg'}</p>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

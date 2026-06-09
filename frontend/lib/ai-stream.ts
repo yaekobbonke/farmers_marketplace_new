@@ -4,7 +4,7 @@ export const streamChat = async (
   onChunk: (text: string) => void
 ) => {
   // ✅ Call Next.js API route instead of Express directly
-  const response = await fetch("/api/assistant/chat", {
+  const response = await fetch("/api/assistants/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query }), 

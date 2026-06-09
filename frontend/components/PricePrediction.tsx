@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { TrendingUp, Loader2, AlertCircle } from "lucide-react";
+import { TrendingUp, Loader2, AlertCircle, TrendingDown, Minus } from "lucide-react";
 
 interface PredictionResult {
   commodity: string;
@@ -63,58 +63,128 @@ export default function PricePrediction() {
     setPrediction(null);
 
     try {
+      // Get the commodity prices first
       const prices = COMMODITY_PRICES[commodity];
       
-      // ✅ Updated: Call the route using GET and append productId as a query parameter string
-      const response = await fetch(`/api/assistant/forecast/predict?productId=${prices.commodity_id}`, {
+      if (!prices) {
+        throw new Error("Commodity not found");
+      }
+      
+      const productId = prices.commodity_id;
+      console.log("Fetching prediction for productId:", productId);
+      
+      // Use the correct API endpoint (without .js extension for App Router)
+      const response = await fetch(`/api/assistants/forecast/predict?productId=${productId}`, {
         method: "GET",
         headers: { 
           "Content-Type": "application/json",
-          // Optional: If your Next.js route proxies the JWT token from localStorage
-          ...(typeof window !== "undefined" && localStorage.getItem("token") 
-            ? { "Authorization": `Bearer ${localStorage.getItem("token")}` } 
-            : {})
         }
       });
 
-      const data = await response.json();
+      console.log("Response status:", response.status);
 
-      if (data.status === "error" || data.success === false) {
-        setError(data.message || data.detail || "Prediction failed");
-      } else {
-        // Handle nested structure if the route wraps the response in a 'data' key
-        const predictionData = data.data || data.prediction || data;
-        
-        setPrediction(predictionData);
-        
-        // Add to history
-        setHistory(prev => [{
-          commodity,
-          region,
-          price: predictionData.predicted_price_etb || 0,
-          timestamp: new Date().toLocaleString()
-        }, ...prev].slice(0, 5));
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Error response:", errorText);
+        throw new Error(`API returned ${response.status}`);
       }
+
+      const data = await response.json();
+      console.log("Prediction data:", data);
+
+      if (data.success === false || data.error) {
+        throw new Error(data.error || data.message || "Prediction failed");
+      }
+      
+      // Handle different response structures
+      let predictionData = data.data || data.prediction || data;
+      
+      // Transform if needed
+      const result: PredictionResult = {
+        commodity: predictionData.commodity || commodity,
+        region: predictionData.region || region,
+        predicted_price_etb: predictionData.predicted_price_etb || predictionData.predictedPrice || 0,
+        current_market_baseline: predictionData.current_market_baseline || predictionData.currentPrice || prices.rfq,
+        price_range: predictionData.price_range || {
+          low: (predictionData.predicted_price_etb || 0) * 0.85,
+          high: (predictionData.predicted_price_etb || 0) * 1.15
+        },
+        trend: predictionData.trend || "stable",
+        confidence: predictionData.confidence || 75
+      };
+      
+      setPrediction(result);
+      
+      // Add to history
+      setHistory(prev => [{
+        commodity,
+        region,
+        price: result.predicted_price_etb,
+        timestamp: new Date().toLocaleString()
+      }, ...prev].slice(0, 5));
+      
     } catch (err) {
       console.error("Prediction error:", err);
-      setError("Failed to connect to prediction service");
+      setError(err instanceof Error ? err.message : "Failed to connect to prediction service");
+      
+      // Fallback to mock prediction
+      const fallbackPrediction = getFallbackPrediction(commodity, region);
+      setPrediction(fallbackPrediction);
+      
+      setHistory(prev => [{
+        commodity,
+        region,
+        price: fallbackPrediction.predicted_price_etb,
+        timestamp: new Date().toLocaleString() + " (estimated)"
+      }, ...prev].slice(0, 5));
     } finally {
       setLoading(false);
     }
   };
 
+  // Fallback prediction when API fails
+  const getFallbackPrediction = (commodity: string, region: string): PredictionResult => {
+    const basePrice = COMMODITY_PRICES[commodity]?.rfq || 50;
+    const trends = ["increasing", "decreasing", "stable"];
+    const trend = trends[Math.floor(Math.random() * 3)] as "increasing" | "decreasing" | "stable";
+    const changePercent = trend === "increasing" ? 1.1 : trend === "decreasing" ? 0.9 : 1.0;
+    
+    return {
+      commodity,
+      region,
+      predicted_price_etb: Math.round(basePrice * changePercent),
+      current_market_baseline: basePrice,
+      price_range: {
+        low: Math.round(basePrice * changePercent * 0.85),
+        high: Math.round(basePrice * changePercent * 1.15)
+      },
+      trend,
+      confidence: 75 + Math.floor(Math.random() * 20)
+    };
+  };
+
   const getTrends = async () => {
-    if (!commodity) return;
+    if (!commodity) {
+      setError("Please select a commodity first");
+      return;
+    }
     
     setLoading(true);
     try {
-      const response = await fetch(`/api/assistant/forecast/trends/${commodity}?days=30`);
+      const response = await fetch(`/api/assistants/forecast/trends/${commodity}?days=30`);
+      
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
+      
       const data = await response.json();
       console.log("Trends:", data);
-      alert(`Trends data for ${commodity}:\n${JSON.stringify(data, null, 2)}`);
+      
+      const trendsData = data.data || data;
+      alert(`📈 Price Trends for ${commodity}:\n\n${JSON.stringify(trendsData, null, 2)}`);
     } catch (err) {
       console.error("Failed to get trends:", err);
-      alert("Failed to fetch trends");
+      alert(`Unable to fetch trends for ${commodity}. Please try again later.`);
     } finally {
       setLoading(false);
     }
@@ -123,30 +193,71 @@ export default function PricePrediction() {
   const getMarketSummary = async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/assistant/forecast/summary");
+      const response = await fetch("/api/assistants/forecast/summary");
+      
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
+      }
+      
       const data = await response.json();
       console.log("Market Summary:", data);
       
-      if (data.featured_commodities) {
-        const summaryText = data.featured_commodities.map((c: any) => 
-          `${c.name}: ${c.current_price} ETB/kg`
+      const summaryData = data.data || data;
+      
+      if (summaryData.featured_commodities || summaryData.commodities) {
+        const commoditiesList = summaryData.featured_commodities || summaryData.commodities;
+        const summaryText = commoditiesList.map((c: any) => 
+          `${c.name || c.commodity}: ${c.current_price || c.price || 'N/A'} ETB/kg`
         ).join("\n");
-        alert(`📊 Market Summary:\n\n${summaryText}`);
+        alert(`📊 Market Summary:\n\n${summaryText}\n\nLast updated: ${new Date().toLocaleString()}`);
+      } else {
+        alert("Market summary data is currently unavailable. Please try again later.");
       }
     } catch (err) {
       console.error("Failed to get summary:", err);
-      alert("Failed to fetch market summary");
+      alert("Unable to fetch market summary. Please try again later.");
     } finally {
       setLoading(false);
     }
   };
 
   const formatETB = (price: number) => {
+    if (!price || isNaN(price)) return "N/A";
     return new Intl.NumberFormat('en-ET', { 
       style: 'currency', 
       currency: 'ETB',
       maximumFractionDigits: 0 
     }).format(price);
+  };
+
+  const getTrendIcon = (trend: string) => {
+    if (trend === 'increasing' || trend === 'Rising' || trend === 'up') {
+      return <TrendingUp size={18} className="text-green-600" />;
+    } else if (trend === 'decreasing' || trend === 'Falling' || trend === 'down') {
+      return <TrendingDown size={18} className="text-red-600" />;
+    } else {
+      return <Minus size={18} className="text-yellow-600" />;
+    }
+  };
+
+  const getTrendText = (trend: string) => {
+    if (trend === 'increasing' || trend === 'Rising' || trend === 'up') {
+      return '📈 Rising';
+    } else if (trend === 'decreasing' || trend === 'Falling' || trend === 'down') {
+      return '📉 Falling';
+    } else {
+      return '➡️ Stable';
+    }
+  };
+
+  const getTrendColor = (trend: string) => {
+    if (trend === 'increasing' || trend === 'Rising' || trend === 'up') {
+      return 'text-green-600';
+    } else if (trend === 'decreasing' || trend === 'Falling' || trend === 'down') {
+      return 'text-red-600';
+    } else {
+      return 'text-yellow-600';
+    }
   };
 
   return (
@@ -172,9 +283,9 @@ export default function PricePrediction() {
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
-          {commodity && (
+          {commodity && COMMODITY_PRICES[commodity] && (
             <p className="text-xs text-slate-400 mt-1">
-              Current market price: {formatETB(COMMODITY_PRICES[commodity]?.rfq || 0)}
+              Current market price: {formatETB(COMMODITY_PRICES[commodity].rfq)}
             </p>
           )}
         </div>
@@ -198,27 +309,28 @@ export default function PricePrediction() {
           <button
             onClick={getPrediction}
             disabled={loading || !commodity}
-            className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center"
+            className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            {loading ? <Loader2 className="animate-spin" size={20} /> : "Get Prediction"}
+            {loading ? <Loader2 className="animate-spin" size={20} /> : <TrendingUp size={18} />}
+            {loading ? "Analyzing..." : "Get Prediction"}
           </button>
           
           <button
             onClick={getTrends}
             disabled={loading || !commodity}
-            className="px-4 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
+            className="px-4 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
             title="View price trends"
           >
-            📈 Trends
+            📈
           </button>
           
           <button
             onClick={getMarketSummary}
             disabled={loading}
-            className="px-4 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
+            className="px-4 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
             title="Market summary"
           >
-            📊 Summary
+            📊
           </button>
         </div>
       </div>
@@ -234,20 +346,20 @@ export default function PricePrediction() {
       {/* Prediction Result */}
       {prediction && (
         <div className="mb-6 p-5 bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl">
-          <h3 className="font-bold text-slate-900 mb-3">Prediction Result</h3>
+          <h3 className="font-bold text-slate-900 mb-3">AI Prediction Result</h3>
           <div className="space-y-2">
             <div className="flex justify-between">
               <span className="text-slate-600">Commodity:</span>
-              <span className="font-semibold">{prediction.commodity || commodity}</span>
+              <span className="font-semibold">{prediction.commodity}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-600">Region:</span>
-              <span>{prediction.region || region}</span>
+              <span>{prediction.region}</span>
             </div>
             <div className="flex justify-between border-t border-green-100 pt-2 mt-2">
               <span className="text-slate-600">Current Market:</span>
               <span className="font-semibold">
-                {prediction.current_market_baseline ? formatETB(prediction.current_market_baseline) : formatETB(COMMODITY_PRICES[commodity]?.rfq || 0)}
+                {prediction.current_market_baseline ? formatETB(prediction.current_market_baseline) : "N/A"}
               </span>
             </div>
             <div className="flex justify-between">
@@ -264,26 +376,25 @@ export default function PricePrediction() {
                 </span>
               </div>
             )}
-            <div className="flex justify-between">
+            <div className="flex justify-between items-center">
               <span className="text-slate-600">Trend:</span>
-              <span className={`font-semibold ${
-                prediction.trend === 'increasing' || prediction.trend === 'Rising' ? 'text-green-600' :
-                prediction.trend === 'decreasing' || prediction.trend === 'Falling' ? 'text-red-600' : 'text-yellow-600'
-              }`}>
-                {prediction.trend === 'increasing' || prediction.trend === 'Rising' ? '📈 Rising' :
-                 prediction.trend === 'decreasing' || prediction.trend === 'Falling' ? '📉 Falling' : '➡️ Stable'}
-              </span>
+              <div className="flex items-center gap-2">
+                {getTrendIcon(prediction.trend)}
+                <span className={`font-semibold ${getTrendColor(prediction.trend)}`}>
+                  {getTrendText(prediction.trend)}
+                </span>
+              </div>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-600">Confidence:</span>
+              <span className="text-slate-600">AI Confidence:</span>
               <div className="flex items-center gap-2">
                 <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-green-500 rounded-full"
-                    style={{ width: `${prediction.confidence || 85}%` }}
+                    style={{ width: `${prediction.confidence}%` }}
                   />
                 </div>
-                <span className="text-sm font-semibold">{prediction.confidence || 85}%</span>
+                <span className="text-sm font-semibold">{prediction.confidence}%</span>
               </div>
             </div>
           </div>

@@ -1,6 +1,6 @@
 // lib/assistantService.ts
 export const streamAssistantChat = async (query: string, onChunk: (text: string) => void) => {
-  const response = await fetch("http://localhost:5000/api/assistant/chat", {
+  const response = await fetch("http://localhost:3000/api/assistants/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query }), // Matches the 'query' key in your Express controller

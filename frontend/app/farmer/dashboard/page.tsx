@@ -42,12 +42,18 @@ import {
   Edit,
   Trash2,
   Copy,
-  TrendingDown
+  TrendingDown,
+  LogOut,
+  ListOrdered
 } from "lucide-react";
 import { AxiosError } from "axios";
 import MarketTable from "@/components/MarketTable";
 import PricePrediction from "@/components/PricePrediction";
 import Link from "next/link";
+
+// Session configuration
+const SESSION_TIMEOUT_MINUTES = 1;
+const CHECK_INTERVAL_MS = 1000;
 
 interface Product {
   id: number;
@@ -102,6 +108,12 @@ export default function FarmerDashboard() {
   const [loadingInsights, setLoadingInsights] = useState(false);
   const insightsFetched = useRef(false);
   
+  // Session management states
+  const [showSessionExpired, setShowSessionExpired] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(SESSION_TIMEOUT_MINUTES * 60);
+  const lastActivityRef = useRef<number>(Date.now());
+  const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
   const [stats, setStats] = useState<DashboardStats>({
     totalProducts: 0,
     pendingApproval: 0,
@@ -143,22 +155,80 @@ export default function FarmerDashboard() {
     return fullName.split(' ')[0];
   };
 
+  // Update last activity and reset timer
+  const updateLastActivity = useCallback(() => {
+    lastActivityRef.current = Date.now();
+    setTimeLeft(SESSION_TIMEOUT_MINUTES * 60);
+  }, []);
+
+  // Logout function - redirects to login
+  const logout = useCallback(() => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("sessionStart");
+    if (sessionTimerRef.current) {
+      clearInterval(sessionTimerRef.current);
+    }
+    router.push("/login");
+  }, [router]);
+
+  // Show session expired modal and then redirect
+  const showExpiredAndRedirect = useCallback(() => {
+    setShowSessionExpired(true);
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("sessionStart");
+    if (sessionTimerRef.current) {
+      clearInterval(sessionTimerRef.current);
+    }
+    setTimeout(() => {
+      router.push("/login");
+    }, 3000);
+  }, [router]);
+
+  // Check session status
+  const checkSession = useCallback(() => {
+    const now = Date.now();
+    const timeSinceLastActivity = now - lastActivityRef.current;
+    const remainingSeconds = Math.max(0, SESSION_TIMEOUT_MINUTES * 60 - Math.floor(timeSinceLastActivity / 1000));
+    setTimeLeft(remainingSeconds);
+    if (timeSinceLastActivity >= SESSION_TIMEOUT_MINUTES * 60 * 1000) {
+      showExpiredAndRedirect();
+    }
+  }, [showExpiredAndRedirect]);
+
+  // Track user activity
+  useEffect(() => {
+    const activities = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'mousemove', 'keypress'];
+    const handleUserActivity = () => updateLastActivity();
+    activities.forEach(activity => window.addEventListener(activity, handleUserActivity));
+    return () => activities.forEach(activity => window.removeEventListener(activity, handleUserActivity));
+  }, [updateLastActivity]);
+
+  // Session timer
+  useEffect(() => {
+    updateLastActivity();
+    sessionTimerRef.current = setInterval(checkSession, CHECK_INTERVAL_MS);
+    return () => {
+      if (sessionTimerRef.current) {
+        clearInterval(sessionTimerRef.current);
+      }
+    };
+  }, [checkSession, updateLastActivity]);
+
   // Apply filters function
   const applyFilters = useCallback((data: Product[], search: string, filter: string) => {
     let filtered = [...data];
-    
     if (search) {
       filtered = filtered.filter(p => 
         p.name.toLowerCase().includes(search.toLowerCase())
       );
     }
-    
     if (filter === "verified") {
       filtered = filtered.filter(p => p.is_verified === true);
     } else if (filter === "pending") {
       filtered = filtered.filter(p => p.is_verified === false);
     }
-    
     setFilteredProducts(filtered);
   }, []);
 
@@ -166,7 +236,6 @@ export default function FarmerDashboard() {
   const fetchInsights = useCallback(async () => {
     if (insightsFetched.current) return;
     if (products.length === 0) return;
-    
     try {
       setLoadingInsights(true);
       insightsFetched.current = true;
@@ -192,7 +261,6 @@ export default function FarmerDashboard() {
   const fetchNotifications = useCallback(async () => {
     const token = localStorage.getItem("token");
     if (!token) return;
-    
     try {
       const response = await api.get("/notifications");
       const data = response.data.data || [];
@@ -208,12 +276,7 @@ export default function FarmerDashboard() {
     try {
       setLoading(true);
       const response = await api.get("/products/farmer/products");
-      
       const data: Product[] = response.data.data || [];
-      
-      console.log("Fetched products:", data.length);
-      console.log("Pending products:", data.filter(p => !p.is_verified).length);
-      console.log("Verified products:", data.filter(p => p.is_verified).length);
       
       const totalValue = data.reduce((acc, curr) => acc + (curr.price * curr.quantity), 0);
       const lowStock = data.filter(p => p.quantity < 10).length;
@@ -238,34 +301,35 @@ export default function FarmerDashboard() {
       });
       
       await fetchNotifications();
-      
       insightsFetched.current = false;
+      updateLastActivity();
     } catch (err) {
       const error = err as AxiosError<{ message: string }>;
       console.error("Dashboard Stats Error:", error.response?.data?.message || error.message);
-      if (error.response?.status === 401) {
-        router.replace("/login");
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        showExpiredAndRedirect();
       }
     } finally {
       setLoading(false);
     }
-  }, [router, fetchNotifications, applyFilters, searchQuery, statusFilter]);
+  }, [fetchNotifications, applyFilters, searchQuery, statusFilter, updateLastActivity, showExpiredAndRedirect]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     insightsFetched.current = false;
     await fetchDashboardData();
     setTimeout(() => setRefreshing(false), 1000);
+    updateLastActivity();
   };
 
   const handleDeleteProduct = async (productId: number) => {
     if (!confirm("Are you sure you want to delete this product?")) return;
-    
     setDeletingProduct(productId);
     try {
       await api.delete(`/products/${productId}`);
       setProducts(prev => prev.filter(p => p.id !== productId));
       alert("Product deleted successfully");
+      updateLastActivity();
     } catch (error) {
       console.error("Error deleting product:", error);
       alert("Failed to delete product");
@@ -275,28 +339,26 @@ export default function FarmerDashboard() {
     }
   };
 
+  const handleDuplicateProduct = async (product: Product) => {
+    try {
+      const duplicatedProduct = {
+        name: `${product.name} (Copy)`,
+        price: product.price,
+        quantity: product.quantity,
+        unit: product.unit,
+        description: `Copy of ${product.name}`,
+        ...(product.category?.id ? { categoryId: product.category.id } : {})
+      };
+      await api.post("/products", duplicatedProduct);
+      await fetchDashboardData();
+      alert("Product duplicated successfully");
+      updateLastActivity();
+    } catch (error) {
+      console.error("Error duplicating product:", error);
+      alert("Failed to duplicate product");
+    }
+  };
 
-const handleDuplicateProduct = async (product: Product) => {
-  try {
-    const duplicatedProduct = {
-      name: `${product.name} (Copy)`,
-      price: product.price,
-      quantity: product.quantity,
-      unit: product.unit,
-      description: `Copy of ${product.name}`,
-      // ✅ Fix: Only include categoryId if category exists and has id
-      ...(product.category?.id ? { categoryId: product.category.id } : {})
-    };
-    await api.post("/products", duplicatedProduct);
-    await fetchDashboardData();
-    alert("Product duplicated successfully");
-  } catch (error) {
-    console.error("Error duplicating product:", error);
-    alert("Failed to duplicate product");
-  }
-};
-
-  // ✅ FIXED: Changed from PATCH to PUT to match backend routes
   const markNotificationAsRead = async (notificationId: number) => {
     try {
       await api.put(`/notifications/${notificationId}/read`);
@@ -306,17 +368,18 @@ const handleDuplicateProduct = async (product: Product) => {
         )
       );
       setUnreadCount(prev => Math.max(0, prev - 1));
+      updateLastActivity();
     } catch (error) {
       console.error("Error marking notification as read:", error);
     }
   };
 
-  // ✅ FIXED: Changed to use PUT for mark all as read
   const markAllNotificationsAsRead = async () => {
     try {
       await api.put("/notifications/mark-all-read");
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
       setUnreadCount(0);
+      updateLastActivity();
     } catch (error) {
       console.error("Error marking all as read:", error);
     }
@@ -336,13 +399,21 @@ const handleDuplicateProduct = async (product: Product) => {
 
   // Get user from localStorage on mount
   useEffect(() => {
+    const token = localStorage.getItem("token");
     const userStr = localStorage.getItem("user");
+    
+    if (!token || !userStr) {
+      router.push("/login");
+      return;
+    }
+    
     if (userStr) {
       try {
         const parsedUser = JSON.parse(userStr);
         setUser(parsedUser);
       } catch (error) {
         console.error("Error parsing user data:", error);
+        router.push("/login");
       }
     }
     
@@ -355,7 +426,7 @@ const handleDuplicateProduct = async (product: Product) => {
       clearInterval(interval);
       clearTimeout(welcomeTimer);
     };
-  }, [fetchDashboardData, fetchNotifications]);
+  }, [fetchDashboardData, fetchNotifications, router]);
 
   const formatETB = (val: number) => 
     new Intl.NumberFormat('en-ET', { 
@@ -371,8 +442,41 @@ const handleDuplicateProduct = async (product: Product) => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-50/30">
+      {/* Session Expired Modal */}
+      {showSessionExpired && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertCircle size={32} className="text-red-600" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Session Expired</h3>
+              <p className="text-slate-600 mb-2">
+                Your session has expired due to {SESSION_TIMEOUT_MINUTES} minute{SESSION_TIMEOUT_MINUTES !== 1 ? 's' : ''} of inactivity.
+              </p>
+              <p className="text-sm text-slate-500 mb-6">
+                Please log in again to continue.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    router.push("/login");
+                  }}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors"
+                >
+                  Go to Login
+                </button>
+              </div>
+              <p className="text-xs text-slate-400 mt-4">
+                Redirecting automatically in a few seconds...
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Welcome Banner */}
-      {showWelcome && user && (
+      {showWelcome && user && !showSessionExpired && (
         <div className="fixed top-20 right-4 z-50 animate-in slide-in-from-top-2 fade-in duration-300">
           <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-2xl p-4 shadow-2xl max-w-sm">
             <div className="flex items-center gap-3">
@@ -408,6 +512,14 @@ const handleDuplicateProduct = async (product: Product) => {
           </div>
           
           <div className="flex flex-wrap gap-3">
+            {/* Session timer indicator */}
+            <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-2 rounded-xl text-sm">
+              <Clock size={16} className="text-slate-400" />
+              <span className="text-slate-600">
+                Session expires in: {Math.floor(timeLeft / 60)}m {timeLeft % 60}s
+              </span>
+            </div>
+            
             <button 
               onClick={handleRefresh}
               disabled={refreshing}
@@ -416,6 +528,15 @@ const handleDuplicateProduct = async (product: Product) => {
               <RefreshCw size={18} className={refreshing ? "animate-spin" : ""} />
               {refreshing ? "Refreshing..." : "Refresh"}
             </button>
+
+            {/* Manage Orders Button - NEW */}
+            <Link
+              href="/farmer/orders"
+              className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:from-purple-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg"
+            >
+              <ListOrdered size={18} />
+              Manage Orders
+            </Link>
             
             <button 
               onClick={() => document.getElementById('price-prediction')?.scrollIntoView({ behavior: 'smooth' })}
@@ -429,6 +550,13 @@ const handleDuplicateProduct = async (product: Product) => {
               className="flex items-center gap-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white px-5 py-2.5 rounded-xl font-bold hover:from-green-700 hover:to-emerald-700 transition-all shadow-md hover:shadow-lg active:scale-95"
             >
               <Plus size={20} /> List Product
+            </button>
+
+            <button 
+              onClick={logout}
+              className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-4 py-2.5 rounded-xl font-medium hover:bg-red-100 transition-all"
+            >
+              <LogOut size={18} /> Logout
             </button>
           </div>
         </div>
@@ -734,7 +862,7 @@ const handleDuplicateProduct = async (product: Product) => {
           <MarketTable />
         </div>
 
-        {/* Notification Bell Dropdown - UPDATED with proper mark all as read */}
+        {/* Notification Bell Dropdown */}
         {showNotifications && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-end p-4" onClick={() => setShowNotifications(false)}>
             <div className="mt-16 w-96 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden" onClick={(e) => e.stopPropagation()}>

@@ -19,9 +19,11 @@ import {
   ChevronDown,
   CheckCircle,
   AlertCircle,
-  XCircle
+  XCircle,
+  ShoppingCart // ✅ Added ShoppingCart icon
 } from "lucide-react";
 import api from "@/lib/api";
+import { useCart } from "@/contexts/CartContext"; // ✅ Import useCart
 
 interface UserData {
   id: number;
@@ -57,6 +59,7 @@ const getUserFromStorage = (): UserData | null => {
 export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   // ✅ Initialize user state directly to avoid useEffect
   const [user, setUser] = useState<UserData | null>(getUserFromStorage);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -69,6 +72,14 @@ export default function Navbar() {
   // Notification states
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  
+  // ✅ Get cart data from CartContext
+  const { totalItems } = useCart();
+
+  // Set mounted flag after component mounts on client
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // ✅ Memoize fetchNotifications to prevent unnecessary re-renders
   const fetchNotifications = useCallback(async () => {
@@ -126,12 +137,12 @@ export default function Navbar() {
   // ✅ Fixed: Use timeout to avoid cascading renders
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (user && token) {
+    if (user && token && mounted) {
       fetchNotifications();
       const interval = setInterval(fetchNotifications, 30000);
       return () => clearInterval(interval);
     }
-  }, [user, fetchNotifications]);
+  }, [user, fetchNotifications, mounted]);
 
   // ✅ Fixed: Handle scroll with cleanup
   useEffect(() => {
@@ -230,7 +241,7 @@ export default function Navbar() {
     }
   };
 
-  // Navigation items - Public pages only
+  // Navigation items - Public pages only (STATIC - never changes)
   const mainNavItems = [
     { href: "/", icon: <Home size={18} />, label: "Home" },
     { href: "/about", icon: <Info size={18} />, label: "About Us" },
@@ -268,7 +279,7 @@ export default function Navbar() {
             </div>
           </Link>
 
-          {/* Desktop Navigation */}
+          {/* Desktop Navigation - STATIC always visible */}
           <div className="hidden md:flex items-center gap-1 lg:gap-2 bg-slate-50 p-1 rounded-2xl border border-slate-100">
             {mainNavItems.map((item) => (
               <NavLink
@@ -281,176 +292,216 @@ export default function Navbar() {
             ))}
           </div>
 
-          {/* Desktop Right Actions */}
+          {/* Desktop Right Actions - Only render after mounted to prevent hydration mismatch */}
           <div className="hidden md:flex items-center gap-4">
-            {/* Notification Bell */}
-            {user && (
-              <div className="relative" ref={notificationRef}>
-                <button 
-                  onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-                  className="relative p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-xl transition-colors"
-                  aria-label="Notifications"
-                >
-                  <Bell size={20} />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
-                      {unreadCount > 9 ? "9+" : unreadCount}
-                    </span>
-                  )}
-                </button>
-
-                {/* Notifications Dropdown */}
-                {isNotificationOpen && (
-                  <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white rounded-2xl shadow-xl border border-slate-100 z-50 overflow-hidden">
-                    <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-                      <h3 className="font-bold text-slate-900">Notifications</h3>
-                      {notifications.length > 0 && (
-                        <button
-                          onClick={markAllAsRead}
-                          className="text-xs text-green-600 hover:underline"
-                        >
-                          Mark all as read
-                        </button>
-                      )}
-                    </div>
-                    
-                    <div className="max-h-96 overflow-y-auto">
-                      {notifications.length === 0 ? (
-                        <div className="p-8 text-center text-slate-400">
-                          <Bell size={32} className="mx-auto mb-2 opacity-30" />
-                          <p className="text-sm">No notifications yet</p>
-                        </div>
-                      ) : (
-                        notifications.map((notification) => (
-                          <div
-                            key={notification.id}
-                            className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer ${
-                              !notification.read ? "bg-green-50/30" : ""
-                            }`}
-                            onClick={() => markAsRead(notification.id)}
-                          >
-                            <div className="flex gap-3">
-                              <div className="shrink-0">
-                                {getNotificationIcon(notification.type)}
-                              </div>
-                              <div className="flex-1">
-                                <p className="text-sm font-medium text-slate-900">
-                                  {notification.title}
-                                </p>
-                                <p className="text-xs text-slate-500 mt-1">
-                                  {notification.message}
-                                </p>
-                                <p className="text-[10px] text-slate-400 mt-1">
-                                  {new Date(notification.createdAt).toLocaleString()}
-                                </p>
-                              </div>
-                              {!notification.read && (
-                                <div className="w-2 h-2 bg-green-500 rounded-full mt-2" />
-                              )}
-                            </div>
-                            {notification.productId && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(`/marketplace/${notification.productId}`);
-                                  setIsNotificationOpen(false);
-                                }}
-                                className="mt-2 text-xs text-green-600 hover:underline"
-                              >
-                                View Product →
-                              </button>
-                            )}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* User Dropdown */}
-            {!user ? (
-              <div className="flex items-center gap-3">
-                <Link 
-                  href="/register"
-                  className="text-sm font-bold text-slate-600 hover:text-green-600 transition-colors"
-                >
-                  Register
-                </Link>
-                <Link 
-                  href="/login"
-                  className="px-4 py-2 bg-green-600 text-white text-sm font-bold rounded-xl hover:bg-green-700 transition-all shadow-md shadow-green-100"
-                >
-                  Sign In
-                </Link>
+            {!mounted ? (
+              /* Placeholder that matches server render - same dimensions as user content */
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-gray-100 rounded-xl animate-pulse"></div>
+                <div className="w-24 h-10 bg-gray-100 rounded-xl animate-pulse"></div>
               </div>
             ) : (
-              <div className="relative" ref={dropdownRef}>
-                <button
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-xl hover:bg-green-100 transition-all border border-slate-200"
-                >
-                  <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">
-                    {user.first_name?.[0]}{user.last_name?.[0]}
-                  </div>
-                  <ChevronDown size={16} className={`text-slate-500 transition-transform duration-200 ${isDropdownOpen ? "rotate-180" : ""}`} />
-                </button>
+              <>
+                {/* ✅ Shopping Cart Button - Always visible for logged in users (Buyers only recommended) */}
+                {user && user.role === "BUYER" && (
+                  <Link href="/cart" className="relative">
+                    <div className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-xl transition-colors">
+                      <ShoppingCart size={20} />
+                      {totalItems > 0 && (
+                        <span className="absolute -top-1 -right-1 w-5 h-5 bg-green-600 text-white text-xs rounded-full flex items-center justify-center font-bold shadow-lg">
+                          {totalItems > 99 ? "99+" : totalItems}
+                        </span>
+                      )}
+                    </div>
+                  </Link>
+                )}
 
-                {/* Dropdown Menu */}
-                {isDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                    {/* User Info */}
-                    <div className="px-4 py-3 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-slate-100">
-                      <p className="text-sm font-bold text-slate-800">
-                        {user.first_name} {user.last_name}
-                      </p>
-                      <p className="text-xs text-slate-500 truncate">{user.email}</p>
-                      <span className="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 text-green-700">
-                        {user.role}
-                      </span>
-                    </div>
-                    
-                    {/* Menu Items */}
-                    <div className="py-2">
-                      <button
-                        onClick={() => {
-                          setIsDropdownOpen(false);
-                          router.push(getDashboardLink());
-                        }}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors text-left"
-                      >
-                        {getDashboardIcon()}
-                        <span className="text-sm font-medium">{getDashboardLabel()}</span>
-                      </button>
-                      
-                      <button
-                        onClick={() => {
-                          setIsDropdownOpen(false);
-                          router.push("/profile");
-                        }}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors text-left"
-                      >
-                        <User size={18} />
-                        <span className="text-sm font-medium">My Profile</span>
-                      </button>
-                      
-                      <div className="border-t border-slate-100 my-1"></div>
-                      
-                      <button
-                        onClick={() => {
-                          setIsDropdownOpen(false);
-                          handleLogout();
-                        }}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-red-600 hover:bg-red-50 transition-colors text-left"
-                      >
-                        <LogOut size={18} />
-                        <span className="text-sm font-medium">Logout</span>
-                      </button>
-                    </div>
+                {/* Notification Bell - Only show if user is logged in */}
+                {user && (
+                  <div className="relative" ref={notificationRef}>
+                    <button 
+                      onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+                      className="relative p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-xl transition-colors"
+                      aria-label="Notifications"
+                    >
+                      <Bell size={20} />
+                      {unreadCount > 0 && (
+                        <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
+                          {unreadCount > 9 ? "9+" : unreadCount}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Notifications Dropdown */}
+                    {isNotificationOpen && (
+                      <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white rounded-2xl shadow-xl border border-slate-100 z-50 overflow-hidden">
+                        <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                          <h3 className="font-bold text-slate-900">Notifications</h3>
+                          {notifications.length > 0 && (
+                            <button
+                              onClick={markAllAsRead}
+                              className="text-xs text-green-600 hover:underline"
+                            >
+                              Mark all as read
+                            </button>
+                          )}
+                        </div>
+                        
+                        <div className="max-h-96 overflow-y-auto">
+                          {notifications.length === 0 ? (
+                            <div className="p-8 text-center text-slate-400">
+                              <Bell size={32} className="mx-auto mb-2 opacity-30" />
+                              <p className="text-sm">No notifications yet</p>
+                            </div>
+                          ) : (
+                            notifications.map((notification) => (
+                              <div
+                                key={notification.id}
+                                className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer ${
+                                  !notification.read ? "bg-green-50/30" : ""
+                                }`}
+                                onClick={() => markAsRead(notification.id)}
+                              >
+                                <div className="flex gap-3">
+                                  <div className="shrink-0">
+                                    {getNotificationIcon(notification.type)}
+                                  </div>
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium text-slate-900">
+                                      {notification.title}
+                                    </p>
+                                    <p className="text-xs text-slate-500 mt-1">
+                                      {notification.message}
+                                    </p>
+                                    <p className="text-[10px] text-slate-400 mt-1">
+                                      {new Date(notification.createdAt).toLocaleString()}
+                                    </p>
+                                  </div>
+                                  {!notification.read && (
+                                    <div className="w-2 h-2 bg-green-500 rounded-full mt-2" />
+                                  )}
+                                </div>
+                                {notification.productId && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      router.push(`/marketplace/${notification.productId}`);
+                                      setIsNotificationOpen(false);
+                                    }}
+                                    className="mt-2 text-xs text-green-600 hover:underline"
+                                  >
+                                    View Product →
+                                  </button>
+                                )}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
+
+                {/* User Dropdown */}
+                {!user ? (
+                  <div className="flex items-center gap-3">
+                    <Link 
+                      href="/register"
+                      className="text-sm font-bold text-slate-600 hover:text-green-600 transition-colors"
+                    >
+                      Register
+                    </Link>
+                    <Link 
+                      href="/login"
+                      className="px-4 py-2 bg-green-600 text-white text-sm font-bold rounded-xl hover:bg-green-700 transition-all shadow-md shadow-green-100"
+                    >
+                      Sign In
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="relative" ref={dropdownRef}>
+                    <button
+                      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                      className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-xl hover:bg-green-100 transition-all border border-slate-200"
+                    >
+                      <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">
+                        {user.first_name?.[0]}{user.last_name?.[0]}
+                      </div>
+                      <ChevronDown size={16} className={`text-slate-500 transition-transform duration-200 ${isDropdownOpen ? "rotate-180" : ""}`} />
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {isDropdownOpen && (
+                      <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                        {/* User Info */}
+                        <div className="px-4 py-3 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-slate-100">
+                          <p className="text-sm font-bold text-slate-800">
+                            {user.first_name} {user.last_name}
+                          </p>
+                          <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                          <span className="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 text-green-700">
+                            {user.role}
+                          </span>
+                        </div>
+                        
+                        {/* Menu Items */}
+                        <div className="py-2">
+                          <button
+                            onClick={() => {
+                              setIsDropdownOpen(false);
+                              router.push(getDashboardLink());
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                          >
+                            {getDashboardIcon()}
+                            <span className="text-sm font-medium">{getDashboardLabel()}</span>
+                          </button>
+                          
+                          <button
+                            onClick={() => {
+                              setIsDropdownOpen(false);
+                              router.push("/profile");
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                          >
+                            <User size={18} />
+                            <span className="text-sm font-medium">My Profile</span>
+                          </button>
+                          
+                          {/* ✅ Add Cart link in dropdown for mobile/quick access */}
+                          {user.role === "BUYER" && (
+                            <button
+                              onClick={() => {
+                                setIsDropdownOpen(false);
+                                router.push("/cart");
+                              }}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                            >
+                              <ShoppingCart size={18} />
+                              <span className="text-sm font-medium">
+                                My Cart {totalItems > 0 && `(${totalItems})`}
+                              </span>
+                            </button>
+                          )}
+                          
+                          <div className="border-t border-slate-100 my-1"></div>
+                          
+                          <button
+                            onClick={() => {
+                              setIsDropdownOpen(false);
+                              handleLogout();
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 text-red-600 hover:bg-red-50 transition-colors text-left"
+                          >
+                            <LogOut size={18} />
+                            <span className="text-sm font-medium">Logout</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -465,10 +516,10 @@ export default function Navbar() {
         </div>
 
         {/* Mobile Navigation Menu */}
-        {isMobileMenuOpen && (
+        {isMobileMenuOpen && mounted && (
           <div className="md:hidden bg-white border-t border-slate-100 shadow-lg animate-in slide-in-from-top duration-300 max-h-[80vh] overflow-y-auto">
             <div className="px-4 py-3 space-y-1">
-              {/* Main navigation items */}
+              {/* Main navigation items (STATIC - always shown) */}
               {mainNavItems.map((item) => (
                 <MobileNavLink
                   key={item.href}
@@ -479,6 +530,17 @@ export default function Navbar() {
                   onClick={() => setIsMobileMenuOpen(false)}
                 />
               ))}
+              
+              {/* ✅ Cart link in mobile menu for buyers */}
+              {user && user.role === "BUYER" && (
+                <MobileNavLink
+                  href="/cart"
+                  icon={<ShoppingCart size={18} />}
+                  label={`My Cart ${totalItems > 0 ? `(${totalItems})` : ""}`}
+                  active={isActive("/cart")}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                />
+              )}
               
               {/* Auth buttons for non-logged in users */}
               {!user ? (

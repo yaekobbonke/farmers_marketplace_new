@@ -1,89 +1,148 @@
-"use client";
+// contexts/CartContext.tsx
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
-import { createContext, useContext, useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
-
-interface AuthContextType {
-  user: any;
-  logout: () => void;
-  resetTimer: () => void;
+interface CartItem {
+  id: number;
+  productId?: number;
+  name: string;
+  price: number;
+  quantity: number;
+  unit: string;
+  image?: string;
+  // Add a unique key for React rendering
+  cartItemId?: string;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+interface CartContextType {
+  items: CartItem[];
+  addToCart: (product: any, quantity: number) => void;
+  removeFromCart: (productId: number) => void;
+  updateQuantity: (productId: number, quantity: number) => void;
+  clearCart: () => void;
+  total: number;
+  getCartTotal: () => number;
+  itemCount: number;
+}
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const warningRef = useRef<NodeJS.Timeout | null>(null);
+const CartContext = createContext<CartContextType | undefined>(undefined);
 
-  const TIMEOUT_MINUTES = 30;
-  const WARNING_MINUTES = 2;
+export function CartProvider({ children }: { children: React.ReactNode }) {
+  const [items, setItems] = useState<CartItem[]>([]);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  const clearTimeouts = () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    if (warningRef.current) clearTimeout(warningRef.current);
-  };
-
-  const logout = () => {
-    localStorage.clear();
-    sessionStorage.clear();
-    document.cookie.split(";").forEach((c) => {
-      document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-    });
-    setUser(null);
-    router.push("/login");
-  };
-
-  const showWarning = () => {
-    const shouldStay = confirm(`You will be logged out due to inactivity in ${WARNING_MINUTES} minute(s). Click OK to stay logged in.`);
-    if (shouldStay) {
-      resetTimer();
-    }
-  };
-
-  const resetTimer = () => {
-    clearTimeouts();
-    
-    const warningTimeout = (TIMEOUT_MINUTES - WARNING_MINUTES) * 60 * 1000;
-    if (warningTimeout > 0) {
-      warningRef.current = setTimeout(showWarning, warningTimeout);
-    }
-    
-    timeoutRef.current = setTimeout(logout, TIMEOUT_MINUTES * 60 * 1000);
-  };
-
+  // Load cart from localStorage on mount
   useEffect(() => {
-    // Load user from localStorage
-    const userStr = localStorage.getItem("user");
-    if (userStr) {
-      setUser(JSON.parse(userStr));
+    try {
+      const savedCart = localStorage.getItem('cart');
+      if (savedCart) {
+        const parsedCart = JSON.parse(savedCart);
+        if (Array.isArray(parsedCart)) {
+          // Ensure each item has a unique cartItemId for React keys
+          const cartWithIds = parsedCart.map((item: CartItem) => ({
+            ...item,
+            cartItemId: item.cartItemId || `${item.id}-${Date.now()}-${Math.random()}`
+          }));
+          setItems(cartWithIds);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load cart from localStorage:', error);
+    } finally {
+      setIsInitialized(true);
     }
-
-    // Activity events
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'mousemove'];
-    const handleActivity = () => resetTimer();
-    events.forEach(event => window.addEventListener(event, handleActivity));
-    
-    resetTimer();
-    
-    return () => {
-      events.forEach(event => window.removeEventListener(event, handleActivity));
-      clearTimeouts();
-    };
   }, []);
 
+  // Save cart to localStorage whenever it changes
+  useEffect(() => {
+    if (isInitialized) {
+      try {
+        localStorage.setItem('cart', JSON.stringify(items));
+      } catch (error) {
+        console.error('Failed to save cart to localStorage:', error);
+      }
+    }
+  }, [items, isInitialized]);
+
+  const addToCart = useCallback((product: any, quantity: number) => {
+    setItems(prevItems => {
+      const existingItemIndex = prevItems.findIndex(item => item.id === product.id);
+      
+      if (existingItemIndex !== -1) {
+        // Update existing item quantity
+        const updatedItems = [...prevItems];
+        updatedItems[existingItemIndex] = {
+          ...updatedItems[existingItemIndex],
+          quantity: updatedItems[existingItemIndex].quantity + quantity
+        };
+        return updatedItems;
+      } else {
+        // Add new item with unique cartItemId
+        const newItem: CartItem = {
+          id: product.id,
+          productId: product.id,
+          name: product.name,
+          price: product.price,
+          quantity: quantity,
+          unit: product.unit || 'kg',
+          image: product.name,
+          cartItemId: `${product.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        };
+        return [...prevItems, newItem];
+      }
+    });
+  }, []);
+
+  const removeFromCart = useCallback((productId: number) => {
+    setItems(prevItems => prevItems.filter(item => item.id !== productId));
+  }, []);
+
+  const updateQuantity = useCallback((productId: number, quantity: number) => {
+    if (quantity <= 0) {
+      removeFromCart(productId);
+      return;
+    }
+    
+    setItems(prevItems =>
+      prevItems.map(item =>
+        item.id === productId ? { ...item, quantity } : item
+      )
+    );
+  }, [removeFromCart]);
+
+  const clearCart = useCallback(() => {
+    setItems([]);
+  }, []);
+
+  const getCartTotal = useCallback(() => {
+    return items.reduce((total, item) => total + (item.price * item.quantity), 0);
+  }, [items]);
+
+  const total = getCartTotal();
+  
+  const itemCount = items.reduce((count, item) => count + item.quantity, 0);
+
+  const value = {
+    items,
+    addToCart,
+    removeFromCart,
+    updateQuantity,
+    clearCart,
+    total,
+    getCartTotal,
+    itemCount
+  };
+
   return (
-    <AuthContext.Provider value={{ user, logout, resetTimer }}>
+    <CartContext.Provider value={value}>
       {children}
-    </AuthContext.Provider>
+    </CartContext.Provider>
   );
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within AuthProvider");
+export function useCart() {
+  const context = useContext(CartContext);
+  if (context === undefined) {
+    throw new Error('useCart must be used within a CartProvider');
   }
   return context;
 }

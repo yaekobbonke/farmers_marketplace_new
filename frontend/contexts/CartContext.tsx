@@ -1,46 +1,43 @@
+// contexts/CartContext.tsx
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import api from '@/lib/api';
 
-export interface CartItem {
-  id: string;
-  productId: number;
+interface CartItem {
+  id: number;
+  productId?: number;
   name: string;
   price: number;
   quantity: number;
   unit: string;
-  farmerId: number;
-  farmerName: string;
   image?: string;
-  stockQuantity: number;
 }
 
 interface CartContextType {
   items: CartItem[];
-  addToCart: (product: any, quantity?: number) => void;
+  addToCart: (product: any, quantity: number) => void;
   removeFromCart: (productId: number) => void;
   updateQuantity: (productId: number, quantity: number) => void;
   clearCart: () => void;
-  totalItems: number;
-  totalPrice: number;
-  isLoading: boolean;
+  total: number;
+  totalItems: number; // 👈 FIXED: Added totalItems to type interface
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
 
   // Load cart from localStorage on mount
   useEffect(() => {
     const savedCart = localStorage.getItem('cart');
     if (savedCart) {
       try {
-        setItems(JSON.parse(savedCart));
+        const parsedCart = JSON.parse(savedCart);
+        setItems(parsedCart);
+        console.log('Loaded cart from localStorage:', parsedCart);
       } catch (error) {
-        console.error('Failed to load cart:', error);
+        console.error('Failed to parse cart from localStorage:', error);
       }
     }
   }, []);
@@ -48,85 +45,68 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   // Save cart to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem('cart', JSON.stringify(items));
+    console.log('Saved cart to localStorage:', items);
   }, [items]);
 
-  const addToCart = (product: any, quantity: number = 1) => {
+  const addToCart = (product: any, quantity: number) => {
+    console.log('Adding to cart:', product, quantity);
     setItems(prevItems => {
-      const existingItem = prevItems.find(item => item.productId === product.id);
+      const existingItem = prevItems.find(item => item.id === product.id);
       
       if (existingItem) {
-        // Check stock limit
-        const newQuantity = existingItem.quantity + quantity;
-        if (product.stockQuantity && newQuantity > product.stockQuantity) {
-          alert(`Only ${product.stockQuantity} items available in stock`);
-          return prevItems;
-        }
-        
-        // Update quantity if already in cart
-        return prevItems.map(item =>
-          item.productId === product.id
-            ? { ...item, quantity: newQuantity }
+        const updatedItems = prevItems.map(item =>
+          item.id === product.id
+            ? { ...item, quantity: item.quantity + quantity }
             : item
         );
+        console.log('Updated existing item:', updatedItems);
+        return updatedItems;
       } else {
-        // Check stock limit
-        if (product.stockQuantity && quantity > product.stockQuantity) {
-          alert(`Only ${product.stockQuantity} items available in stock`);
-          return prevItems;
-        }
-        
-        // Add new item
-        const newItem: CartItem = {
-          id: `${product.id}-${Date.now()}`,
+        const newItem = {
+          id: product.id,
           productId: product.id,
           name: product.name,
-          price: Number(product.price),
+          price: product.price,
           quantity: quantity,
           unit: product.unit || 'kg',
-          farmerId: product.farmer?.id || 0,
-          farmerName: product.farmer?.first_name 
-            ? `${product.farmer.first_name} ${product.farmer.last_name || ''}`
-            : "Verified Farmer",
-          stockQuantity: product.stockQuantity || 0
+          image: product.name
         };
-        return [...prevItems, newItem];
+        const updatedItems = [...prevItems, newItem];
+        console.log('Added new item:', updatedItems);
+        return updatedItems;
       }
     });
   };
 
   const removeFromCart = (productId: number) => {
-    setItems(prev => prev.filter(item => item.productId !== productId));
+    console.log('Removing item with ID:', productId);
+    console.log('Current items before removal:', items);
+    
+    setItems(prevItems => {
+      const filteredItems = prevItems.filter(item => item.id !== productId);
+      console.log('Items after removal:', filteredItems);
+      return filteredItems;
+    });
   };
 
   const updateQuantity = (productId: number, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(productId);
-      return;
-    }
-    
-    setItems(prev =>
-      prev.map(item => {
-        if (item.productId === productId) {
-          // Check stock limit
-          if (item.stockQuantity && quantity > item.stockQuantity) {
-            alert(`Only ${item.stockQuantity} items available in stock`);
-            return item;
-          }
-          return { ...item, quantity };
-        }
-        return item;
-      })
+    console.log('Updating quantity for product:', productId, 'to', quantity);
+    setItems(prevItems =>
+      prevItems.map(item =>
+        item.id === productId ? { ...item, quantity } : item
+      )
     );
   };
 
   const clearCart = () => {
-    if (confirm('Are you sure you want to clear your cart?')) {
-      setItems([]);
-    }
+    console.log('Clearing cart');
+    setItems([]);
   };
 
+  const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  
+  // 👈 FIXED: Calculate the cumulative sum of quantities for the badge count
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
-  const totalPrice = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
   return (
     <CartContext.Provider value={{
@@ -135,9 +115,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       removeFromCart,
       updateQuantity,
       clearCart,
-      totalItems,
-      totalPrice,
-      isLoading
+      total,
+      totalItems // 👈 FIXED: Provided value to consumers
     }}>
       {children}
     </CartContext.Provider>
@@ -146,8 +125,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
 export function useCart() {
   const context = useContext(CartContext);
-  if (!context) {
-    throw new Error('useCart must be used within CartProvider');
+  if (context === undefined) {
+    throw new Error('useCart must be used within a CartProvider');
   }
   return context;
 }

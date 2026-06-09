@@ -1,3 +1,4 @@
+// lib/api.ts
 import axios from "axios";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
@@ -7,42 +8,41 @@ const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  withCredentials: false, // Make sure this is false
+  withCredentials: false,
 });
 
 // Request interceptor to add token
 api.interceptors.request.use(
   (config) => {
-    // Get token from localStorage
     const token = localStorage.getItem("token");
-    
-    console.log("=== API Request ===");
-    console.log("URL:", config.url);
-    console.log("Token exists:", !!token);
     if (token) {
-      console.log("Token preview:", token.substring(0, 30) + "...");
       config.headers.Authorization = `Bearer ${token}`;
-    } else {
-      console.log("No token found in localStorage");
     }
-    console.log("Headers:", config.headers);
-    
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
-// Response interceptor for debugging
+// Response interceptor with error handling
 api.interceptors.response.use(
-  (response) => {
-    console.log(`API Response: ${response.status} ${response.config.url}`);
-    return response;
-  },
+  (response) => response,
   (error) => {
-    console.error(`API Error: ${error.response?.status} ${error.config?.url}`);
-    console.error("Error details:", error.response?.data);
+    const { response } = error;
+    
+    // Handle 401 - Token expired
+    if (response?.status === 401) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+    }
+    
+    // Handle 403 - Forbidden
+    if (response?.status === 403 && typeof window !== 'undefined') {
+      window.location.href = '/unauthorized';
+    }
+    
     return Promise.reject(error);
   }
 );
