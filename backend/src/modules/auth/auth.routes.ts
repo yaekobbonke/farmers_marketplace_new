@@ -19,7 +19,7 @@ router.delete("/account", AuthController.deleteAccount);
 router.post("/account/deactivate", AuthController.deactivateAccount);
 
 // Admin only routes - Fix here
-router.use(requireRole("ADMIN"));  // Change from isAdmin to requireRole("ADMIN")
+router.use(requireRole("ADMIN")); 
 
 router.get("/users", AuthController.getAllUsers);
 router.post("/users/:userId/promote", AuthController.promoteToAdmin);

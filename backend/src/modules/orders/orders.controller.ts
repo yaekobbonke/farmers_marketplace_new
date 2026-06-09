@@ -3,24 +3,27 @@ import { Request, Response } from 'express';
 import { OrdersService } from './orders.service';
 import { ZodError } from 'zod';
 
-// ✅ No need for AuthRequest - Express.Request already has user property
-// Thanks to your global declaration in authMiddleware
-
 export class OrdersController {
   static async createOrder(req: Request, res: Response) {
     try {
-      const userId = req.user!.id; // ✅ req.user is available globally
+      const userId = req.user!.id;
       const order = await OrdersService.createOrder(userId, req.body);
       
+      // Return the full order data with id
       res.status(201).json({
         success: true,
         message: 'Order created successfully',
-        data: { orderId: order.id }
+        data: {
+          id: order.id,
+          status: order.status,
+          totalAmount: order.totalAmount,
+          createdAt: order.createdAt,
+          orderItems: order.orderItems
+        }
       });
     } catch (error: any) {
       console.error('Create order error:', error);
       
-      // Handle specific errors
       if (error.message.includes('not found')) {
         return res.status(404).json({
           success: false,
@@ -46,7 +49,6 @@ export class OrdersController {
     try {
       const orderId = parseInt(req.params.id);
       
-      // Validate orderId
       if (isNaN(orderId)) {
         return res.status(400).json({
           success: false,
@@ -86,11 +88,10 @@ export class OrdersController {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 10;
       
-      // Validate pagination parameters
       if (page < 1 || limit < 1 || limit > 100) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid pagination parameters. Page must be >= 1, limit between 1-100'
+          error: 'Invalid pagination parameters'
         });
       }
       
@@ -114,16 +115,15 @@ export class OrdersController {
       const farmerId = req.user!.id;
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 10;
+      const statusFilter = req.query.status as string; // ← Get status filter from query params
       
-      // Validate pagination parameters
       if (page < 1 || limit < 1 || limit > 100) {
         return res.status(400).json({
           success: false,
-          error: 'Invalid pagination parameters. Page must be >= 1, limit between 1-100'
+          error: 'Invalid pagination parameters'
         });
       }
       
-      // Only farmers can access this
       if (req.user!.role !== 'FARMER' && req.user!.role !== 'ADMIN') {
         return res.status(403).json({
           success: false,
@@ -131,7 +131,8 @@ export class OrdersController {
         });
       }
       
-      const result = await OrdersService.getFarmerOrders(farmerId, page, limit);
+      // Pass the statusFilter to the service
+      const result = await OrdersService.getFarmerOrders(farmerId, page, limit, statusFilter);
       
       res.json({
         success: true,
@@ -150,7 +151,6 @@ export class OrdersController {
     try {
       const orderId = parseInt(req.params.id);
       
-      // Validate orderId
       if (isNaN(orderId)) {
         return res.status(400).json({
           success: false,
@@ -158,7 +158,6 @@ export class OrdersController {
         });
       }
       
-      // Validate status
       const { status, trackingNumber, reason } = req.body;
       const validStatuses = ['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'REFUNDED'];
       
@@ -174,8 +173,8 @@ export class OrdersController {
       
       const order = await OrdersService.updateOrderStatus(orderId, userId, userRole, {
         status,
-        trackingNumber,
-        reason
+        trackingNumber
+        
       });
       
       res.json({
@@ -211,7 +210,6 @@ export class OrdersController {
     try {
       const orderId = parseInt(req.params.id);
       
-      // Validate orderId
       if (isNaN(orderId)) {
         return res.status(400).json({
           success: false,
@@ -260,7 +258,6 @@ export class OrdersController {
     }
   }
   
-  // ✅ Additional utility method to get order statistics for buyer
   static async getOrderStats(req: Request, res: Response) {
     try {
       const userId = req.user!.id;
@@ -279,7 +276,6 @@ export class OrdersController {
     }
   }
   
-  // ✅ Additional utility method to track order status history
   static async getOrderStatusHistory(req: Request, res: Response) {
     try {
       const orderId = parseInt(req.params.id);

@@ -7,25 +7,27 @@ datasource db {
 }
 
 model User {
-  id         Int       @id @default(autoincrement())
-  first_name String
-  last_name  String
-  phone      String    @unique
-  email      String    @unique
-  password   String
-  role       Role      @default(FARMER)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  location   String?
-  isActive   Boolean   @default(true)
-  is_suspended Boolean @default(false)
-  
-  // Relations - removed relation names that were causing issues
-  cart         Cart?
-  orders       Order[]
-  products     Product[]
+  id           Int      @id @default(autoincrement())
+  first_name   String
+  last_name    String
+  phone        String   @unique
+  email        String   @unique
+  password     String
+  role         Role     @default(FARMER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  location     String?
+  isActive     Boolean  @default(true)
+  is_suspended Boolean  @default(false)
+
+  // Relations
+  cart          Cart?
+  orders        Order[]
+  products      Product[]
   notifications Notification[]
   searchHistory SearchHistory[]
+  farmerOrders  OrderItem[]     @relation("FarmerOrderItems")
+  orderReviews  OrderReview[] // ✅ ADD THIS LINE
 
   @@index([location])
   @@index([email])
@@ -43,28 +45,29 @@ model Category {
 }
 
 model Product {
-  id               Int               @id @default(autoincrement())
-  name             String
-  type             ProductType       @default(CROP)
-  quantity         Decimal           @db.Decimal(10, 2)
-  unit             String
-  price            Decimal           @db.Decimal(10, 2)
-  description      String?
-  location         String?
-  is_verified      Boolean           @default(false)
-  is_featured      Boolean           @default(false)
-  views            Int               @default(0)
-  farmerId         Int
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  status           ProductStatus     @default(AVAILABLE)
-  categoryId       Int?
-  tags             String?
-  embeddingId      String?
-  latitude         Float?
-  longitude        Float?
-  
-  // Relations with CASCADE - simplified
+  id            Int           @id @default(autoincrement())
+  name          String
+  type          ProductType   @default(CROP)
+  quantity      Decimal       @db.Decimal(10, 2)
+  unit          String
+  price         Decimal       @db.Decimal(10, 2)
+  description   String?
+  location      String?
+  is_verified   Boolean       @default(false)
+  is_featured   Boolean       @default(false)
+  views         Int           @default(0)
+  farmerId      Int
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  status        ProductStatus @default(AVAILABLE)
+  categoryId    Int?
+  tags          String?
+  embeddingId   String?
+  latitude      Float?
+  longitude     Float?
+  stockQuantity Int           @default(0)
+
+  // Relations
   category         Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   farmer           User              @relation(fields: [farmerId], references: [id], onDelete: Cascade)
   cartItems        CartItem[]
@@ -72,6 +75,7 @@ model Product {
   orderItems       OrderItem[]
   priceHistories   PriceHistory[]
   pricePredictions PricePrediction[]
+  orderReviews     OrderReview[] // ✅ ADD THIS LINE
 
   @@index([name])
   @@index([status])
@@ -144,6 +148,7 @@ model CartItem {
   @@index([productId])
 }
 
+// ✅ UPDATED Order model with better fields
 model Order {
   id              Int             @id @default(autoincrement())
   buyerId         Int
@@ -154,58 +159,98 @@ model Order {
   deliveryAddress String?
   deliveryStatus  DeliveryStatus?
   notes           String?
-  buyer           User            @relation(fields: [buyerId], references: [id], onDelete: Restrict)
-  orderItems      OrderItem[]
-  payment         Payment?
+  trackingNumber  String?
+  shippingAddress String?
+  cancelledAt     DateTime?
+
+  // Relations
+  buyer         User                 @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  orderItems    OrderItem[]
+  payment       Payment?
+  statusHistory OrderStatusHistory[]
+  notifications Notification[]
+  review        OrderReview? // ✅ ADD THIS LINE (one-to-one with OrderReview)
 
   @@index([buyerId])
   @@index([status])
   @@index([createdAt])
+  @@index([status, createdAt])
 }
 
+// ✅ UPDATED OrderItem model
 model OrderItem {
   id        Int     @id @default(autoincrement())
   orderId   Int
   productId Int
   quantity  Decimal @db.Decimal(10, 2)
-  unitPrice Decimal @db.Decimal(10, 2)
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)  // ✅ Changed from SetNull to Restrict
+  unitPrice Decimal @db.Decimal(10, 2) // Price at time of purchase
+
+  // Relations
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  // ✅ Farmer relation for easy querying (who sells this item)
+  farmerId Int? // Denormalized for performance
+  farmer   User? @relation("FarmerOrderItems", fields: [farmerId], references: [id])
 
   @@unique([orderId, productId])
   @@index([orderId])
   @@index([productId])
+  @@index([farmerId])
+}
+
+// ✅ Add OrderStatusHistory to track status changes
+model OrderStatusHistory {
+  id        Int          @id @default(autoincrement())
+  orderId   Int
+  oldStatus OrderStatus?
+  newStatus OrderStatus
+  changedBy Int // User ID who changed the status
+  reason    String? // Reason for status change (e.g., cancellation reason)
+  createdAt DateTime     @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([createdAt])
 }
 
 model Payment {
-  id        Int           @id @default(autoincrement())
-  orderId   Int           @unique
-  amount    Decimal       @db.Decimal(10, 2)
-  createdAt DateTime      @default(now())
-  method    PaymentMethod
-  status    PaymentStatus @default(PENDING)
-  order     Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id            Int           @id @default(autoincrement())
+  orderId       Int           @unique
+  amount        Decimal       @db.Decimal(10, 2)
+  createdAt     DateTime      @default(now())
+  method        PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  transactionId String? // ✅ External payment gateway transaction ID
+  paidAt        DateTime? // ✅ When payment was completed
+  order         Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
   @@index([status])
+  @@index([transactionId])
 }
 
 model Notification {
-  id        Int       @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   userId    Int
   title     String
   message   String
-  type      String    @default("general")
-  isRead    Boolean   @default(false)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt @default(now()) // ✅ Add @default(now())
+  type      String   @default("general")
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  orderId   Int? // ✅ Link notification to order
+  productId Int? // Keep existing productId field
 
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order Order? @relation(fields: [orderId], references: [id])
 
   @@index([userId])
   @@index([isRead])
   @@index([createdAt])
   @@index([userId, isRead])
+  @@index([orderId])
 }
 
 model SearchHistory {
@@ -213,9 +258,9 @@ model SearchHistory {
   userId    Int
   query     String
   createdAt DateTime @default(now())
-  
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([createdAt])
 }
@@ -224,12 +269,35 @@ model SystemSetting {
   id          Int      @id @default(autoincrement())
   key         String   @unique
   value       String
-  type        String   @default("string") // string, number, boolean, json
+  type        String   @default("string")
   description String?
   updatedAt   DateTime @updatedAt
   createdAt   DateTime @default(now())
 
   @@index([key])
+  @@map("SystemSetting")
+}
+
+// ✅ Add Review/Rating model for orders
+model OrderReview {
+  id        Int      @id @default(autoincrement())
+  orderId   Int      @unique
+  productId Int
+  userId    Int // Buyer who wrote review
+  rating    Int // 1-5 stars
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([userId])
+  @@index([rating])
 }
 
 enum Role {
@@ -248,13 +316,20 @@ enum ProductStatus {
   SOLD_OUT
 }
 
+// ✅ UPDATED OrderStatus with more states
 enum OrderStatus {
-  PENDING
-  COMPLETED
-  CANCELLED
+  PENDING // Order placed, waiting for farmer confirmation
+  CONFIRMED // Farmer confirmed the order
+  PROCESSING // Farmer is preparing the order
+  SHIPPED // Order has been shipped
+  DELIVERED // Order delivered successfully
+  COMPLETED // Order completed (after delivery confirmation)
+  CANCELLED // Order cancelled
+  REFUNDED // Order refunded
 }
 
 enum DeliveryStatus {
+  PENDING
   IN_TRANSIT
   DELIVERED
   FAILED
@@ -264,6 +339,7 @@ enum PaymentMethod {
   TELEBIRR
   MPESA
   CASH
+  BANK_TRANSFER
 }
 
 enum PaymentStatus {

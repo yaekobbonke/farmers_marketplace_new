@@ -84,7 +84,7 @@ export class AuthService {
     const token = signToken({ 
       id: user.id, 
       email: user.email, 
-      role: userRole.toUpperCase(),
+      role: userRole.toUpperCase()as 'ADMIN' | 'FARMER' | 'BUYER',
       is_suspended: user.is_suspended
     });
 

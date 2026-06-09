@@ -1,5 +1,7 @@
 import prisma from "../../config/prisma";
+import { OrderStatus } from "@prisma/client";
 import { formatTimeAgo } from "../../utils/dateUtils";
+
 
 // Helper function to safely convert any numeric value to number
 const toNumber = (value: any): number => {
@@ -65,31 +67,37 @@ interface ActivityItem {
 
 export class AdminService {
   static async getStats(): Promise<DashboardStats> {
-    const [totalUsers, totalProducts, totalOrders, totalRevenue] = await Promise.all([
+    const [totalUsers, totalProducts, totalOrders] = await Promise.all([
       prisma.user.count(),
       prisma.product.count(),
-      prisma.order.count(),
-      prisma.order.aggregate({
-        _sum: { totalAmount: true },
-        where: { status: "COMPLETED" }
-      })
+      prisma.order.count()
     ]);
 
-    const [activeProducts, pendingProducts, completedOrders, pendingOrders, monthlyRevenue] = await Promise.all([
+    // Use the correct OrderStatus enum values
+    const totalRevenueResult = await prisma.order.aggregate({
+      _sum: { totalAmount: true },
+      where: { status: OrderStatus.COMPLETED }
+    });
+    const totalRevenue = toNumber(totalRevenueResult._sum?.totalAmount);
+
+    const [activeProducts, pendingProducts, completedOrders, pendingOrders] = await Promise.all([
       prisma.product.count({ where: { status: "AVAILABLE" } }),
       prisma.product.count({ where: { is_verified: false } }),
-      prisma.order.count({ where: { status: "COMPLETED" } }),
-      prisma.order.count({ where: { status: "PENDING" } }),
-      prisma.order.aggregate({
-        _sum: { totalAmount: true },
-        where: {
-          status: "COMPLETED",
-          createdAt: {
-            gte: new Date(new Date().setMonth(new Date().getMonth() - 1))
-          }
-        }
-      })
+      prisma.order.count({ where: { status: OrderStatus.COMPLETED } }),
+      prisma.order.count({ where: { status: OrderStatus.PENDING } })
     ]);
+
+    // Handle monthlyRevenue separately with proper null checking
+    const monthlyRevenueResult = await prisma.order.aggregate({
+      _sum: { totalAmount: true },
+      where: {
+        status: OrderStatus.COMPLETED,
+        createdAt: {
+          gte: new Date(new Date().setMonth(new Date().getMonth() - 1))
+        }
+      }
+    });
+    const monthlyRevenue = toNumber(monthlyRevenueResult._sum?.totalAmount);
 
     const revenueChange = 12.5;
     const userGrowth = 8.3;
@@ -100,12 +108,12 @@ export class AdminService {
       totalUsers,
       totalProducts,
       totalOrders,
-      totalRevenue: toNumber(totalRevenue._sum.totalAmount),
+      totalRevenue,
       pendingProducts,
       activeProducts,
       completedOrders,
       pendingOrders,
-      monthlyRevenue: toNumber(monthlyRevenue._sum.totalAmount),
+      monthlyRevenue,
       revenueChange,
       userGrowth,
       orderGrowth,
@@ -314,7 +322,7 @@ export class AdminService {
       const orders = await prisma.order.findMany({
         where: {
           createdAt: { gte: startDate },
-          status: "COMPLETED"
+          status: OrderStatus.COMPLETED
         },
         select: {
           createdAt: true,

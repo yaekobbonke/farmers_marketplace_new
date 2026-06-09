@@ -1,69 +1,91 @@
 import { PrismaClient, OrderStatus } from '@prisma/client';
 import prisma from "../../config/prisma";
 import { toNumber, convertOrderDecimals, convertOrdersDecimals } from '../../utils/decimal.utils';
-
-export interface CreateOrderInput {
-  items: Array<{
-    productId: number;
-    quantity: number;
-    price: number;
-  }>;
-  totalAmount: number;
-  shippingAddress?: string;
-  notes?: string;
-}
-
-export interface UpdateOrderStatusInput {
-  status: 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED' | 'REFUNDED';
-  trackingNumber?: string;
-  reason?: string;
-}
+import { 
+  CreateOrderInput, 
+  UpdateOrderStatusInput,
+  OrderFilters,
+  OrderStatsResponse,
+  OrderStatusHistoryResponse,
+  OrderResponse,
+  PaginatedOrdersResponse 
+} from './orders.types';
 
 export class OrdersService {
   static async createOrder(userId: number, input: CreateOrderInput) {
     const { items, totalAmount, shippingAddress, notes } = input;
     
+    // Validate input
+    if (!items || items.length === 0) {
+      throw new Error('No items in order');
+    }
+    
+    if (!totalAmount || totalAmount <= 0) {
+      throw new Error('Invalid total amount');
+    }
+    
+    console.log(`📦 Creating order for user ${userId} with ${items.length} items`);
+    
     return await prisma.$transaction(async (tx) => {
+      // Fetch all products first to reduce database calls
+      const productIds = items.map(item => item.productId);
+      const products = await tx.product.findMany({
+        where: { id: { in: productIds } },
+        include: { farmer: true }
+      });
+      
+      // Create a map for quick lookup
+      const productMap = new Map();
+      products.forEach(product => {
+        productMap.set(product.id, product);
+      });
+      
       // Verify all products exist and have sufficient stock
       for (const item of items) {
-        const product = await tx.product.findUnique({
-          where: { id: item.productId },
-          include: { farmer: true }
-        });
+        const product = productMap.get(item.productId);
         
         if (!product) {
-          throw new Error(`Product ${item.productId} not found`);
+          throw new Error(`Product with ID ${item.productId} not found`);
         }
         
-        const stockQuantity = toNumber(product.stockQuantity);
+        const stockQuantity = toNumber(product.quantity);
         
         if (stockQuantity < item.quantity) {
-          throw new Error(`Insufficient stock for ${product.name}. Available: ${stockQuantity}`);
+          throw new Error(`Insufficient stock for ${product.name}. Available: ${stockQuantity}, Requested: ${item.quantity}`);
         }
         
-        // Update stock - calculate new value manually
+        if (item.quantity <= 0) {
+          throw new Error(`Invalid quantity for ${product.name}. Quantity must be greater than 0`);
+        }
+        
+        // Update stock
         const newStockQuantity = stockQuantity - item.quantity;
+        console.log(`📦 Updating stock for ${product.name}: ${stockQuantity} → ${newStockQuantity}`);
+        
         await tx.product.update({
           where: { id: item.productId },
-          data: { stockQuantity: newStockQuantity }
+          data: { quantity: newStockQuantity }
         });
       }
       
-      // Create order - ensure totalAmount is converted properly for Prisma
+      // Create order
       const order = await tx.order.create({
         data: {
           buyerId: userId,
           totalAmount: totalAmount,
           status: OrderStatus.PENDING,
-          shippingAddress,
-          notes,
+          shippingAddress: shippingAddress || null,
+          notes: notes || null,
           orderItems: {
-            create: items.map(item => ({
-              productId: item.productId,
-              quantity: item.quantity,
-              unitPrice: item.price,
-              farmerId: null
-            }))
+            create: items.map(item => {
+              const product = productMap.get(item.productId);
+              return {
+                productId: item.productId,
+                quantity: item.quantity,
+                unitPrice: item.price,
+                farmerId: product?.farmer?.id || null
+              };
+            })
           }
         },
         include: {
@@ -97,9 +119,9 @@ export class OrdersService {
         }
       });
       
-      // Update farmerId in order items
+      // Update farmerId in order items (for any items that might have missed it)
       for (const item of order.orderItems) {
-        if (item.product.farmer) {
+        if (item.product.farmer && !item.farmerId) {
           await tx.orderItem.update({
             where: { id: item.id },
             data: { farmerId: item.product.farmer.id }
@@ -115,13 +137,17 @@ export class OrdersService {
         maximumFractionDigits: 2
       }).format(toNumber(totalAmount));
       
-      // Create notifications
-      const farmerIds = new Set(order.orderItems.map(item => item.product.farmer?.id).filter(Boolean));
+      // Create notifications for farmers
+      const farmerIds = new Set(
+        order.orderItems
+          .map(item => item.product.farmer?.id)
+          .filter((id): id is number => id !== null && id !== undefined)
+      );
       
       for (const farmerId of farmerIds) {
         await tx.notification.create({
           data: {
-            userId: farmerId!,
+            userId: farmerId,
             title: 'New Order Received!',
             message: `You have received a new order #${order.id} totaling ${formattedTotal}`,
             type: 'success',
@@ -130,6 +156,7 @@ export class OrdersService {
         });
       }
       
+      // Create notification for buyer
       await tx.notification.create({
         data: {
           userId,
@@ -151,12 +178,17 @@ export class OrdersService {
         }
       });
       
+      console.log(`✅ Order ${order.id} created successfully`);
+      
       // Convert Decimal to number in response
-      return convertOrderDecimals(order);
+      return convertOrderDecimals(order) as OrderResponse;
+    }).catch((error) => {
+      console.error('❌ Transaction failed:', error);
+      throw new Error(`Order creation failed: ${error.message}`);
     });
   }
   
-  static async getUserOrders(userId: number, page: number = 1, limit: number = 10) {
+  static async getUserOrders(userId: number, page: number = 1, limit: number = 10): Promise<PaginatedOrdersResponse> {
     const skip = (page - 1) * limit;
     
     const [orders, total] = await Promise.all([
@@ -190,7 +222,7 @@ export class OrdersService {
     ]);
     
     return {
-      orders: convertOrdersDecimals(orders),
+      orders: convertOrdersDecimals(orders) as OrderResponse[],
       pagination: {
         page,
         limit,
@@ -200,18 +232,26 @@ export class OrdersService {
     };
   }
   
-  static async getFarmerOrders(farmerId: number, page: number = 1, limit: number = 10) {
+  static async getFarmerOrders(farmerId: number, page: number = 1, limit: number = 10, statusFilter?: string): Promise<PaginatedOrdersResponse> {
     const skip = (page - 1) * limit;
+    
+    // Build where clause
+    const where: any = {
+      orderItems: {
+        some: {
+          farmerId: farmerId
+        }
+      }
+    };
+    
+    // Add status filter if provided and not 'all'
+    if (statusFilter && statusFilter !== 'all') {
+      where.status = statusFilter;
+    }
     
     const [orders, total] = await Promise.all([
       prisma.order.findMany({
-        where: {
-          orderItems: {
-            some: {
-              farmerId: farmerId
-            }
-          }
-        },
+        where,
         include: {
           buyer: {
             select: {
@@ -241,19 +281,11 @@ export class OrdersService {
         skip,
         take: limit
       }),
-      prisma.order.count({
-        where: {
-          orderItems: {
-            some: {
-              farmerId: farmerId
-            }
-          }
-        }
-      })
+      prisma.order.count({ where })
     ]);
     
     return {
-      orders: convertOrdersDecimals(orders),
+      orders: convertOrdersDecimals(orders) as OrderResponse[],
       pagination: {
         page,
         limit,
@@ -263,7 +295,7 @@ export class OrdersService {
     };
   }
   
-  static async getOrderById(orderId: number, userId: number, userRole: string) {
+  static async getOrderById(orderId: number, userId: number, userRole: string): Promise<OrderResponse> {
     const where: any = { id: orderId };
     
     if (userRole !== 'ADMIN') {
@@ -308,7 +340,7 @@ export class OrdersService {
       throw new Error('Order not found');
     }
     
-    return convertOrderDecimals(order);
+    return convertOrderDecimals(order) as OrderResponse;
   }
   
   static async updateOrderStatus(
@@ -316,8 +348,8 @@ export class OrdersService {
     userId: number,
     userRole: string,
     input: UpdateOrderStatusInput
-  ) {
-    const { status, trackingNumber, reason } = input;
+  ): Promise<OrderResponse> {
+    const { status, trackingNumber } = input;
     
     return await prisma.$transaction(async (tx) => {
       // Get the order
@@ -336,22 +368,26 @@ export class OrdersService {
         throw new Error('Order not found');
       }
       
-      // Check authorization
+      // Check authorization - Farmers can update orders that contain their products
       const isFarmer = order.orderItems.some(item => item.product.farmerId === userId);
-      if (userRole !== 'ADMIN' && !isFarmer) {
+      const isBuyer = order.buyerId === userId;
+      const isAdmin = userRole === 'ADMIN';
+      
+      if (!isAdmin && !isFarmer && !isBuyer) {
         throw new Error('Unauthorized to update this order');
       }
       
       const oldStatus = order.status;
+      const newStatus = status as OrderStatus;
       
       // Update order
       const updatedOrder = await tx.order.update({
         where: { id: orderId },
         data: {
-          status: status as OrderStatus,
-          trackingNumber,
+          status: newStatus,
+          trackingNumber: trackingNumber || null,
           updatedAt: new Date(),
-          ...(status === 'CANCELLED' ? { cancelledAt: new Date() } : {})
+          ...(newStatus === OrderStatus.CANCELLED ? { cancelledAt: new Date() } : {})
         },
         include: {
           orderItems: {
@@ -368,9 +404,9 @@ export class OrdersService {
         data: {
           orderId,
           oldStatus,
-          newStatus: status as OrderStatus,
+          newStatus,
           changedBy: userId,
-          reason: reason || `Status changed from ${oldStatus} to ${status}`
+          reason:`Status changed from ${oldStatus} to ${status}`
         }
       });
       
@@ -380,44 +416,45 @@ export class OrdersService {
         currency: 'ETB' 
       }).format(toNumber(order.totalAmount));
       
-      // Notify buyer about status change
-      await tx.notification.create({
-        data: {
-          userId: order.buyerId,
-          title: `Order #${orderId} Status Updated`,
-          message: `Your order status has been updated from ${oldStatus} to ${status}. Order total: ${formattedTotal}`,
-          type: status === 'DELIVERED' ? 'success' : 'info',
-          orderId
-        }
-      });
+      // Notify buyer about status change (if not cancelled by buyer themselves)
+      if (order.buyerId !== userId || newStatus !== OrderStatus.CANCELLED) {
+        await tx.notification.create({
+          data: {
+            userId: order.buyerId,
+            title: `Order #${orderId} Status Updated`,
+            message: `Your order status has been updated from ${oldStatus} to ${status}. Order total: ${formattedTotal}`,
+            type: newStatus === OrderStatus.DELIVERED ? 'success' : 'info',
+            orderId
+          }
+        });
+      }
       
       // If cancelled, restore stock
-      if (status === 'CANCELLED' && oldStatus !== 'CANCELLED') {
+      if (newStatus === OrderStatus.CANCELLED && oldStatus !== OrderStatus.CANCELLED) {
         for (const item of order.orderItems) {
-          // Get current stock
           const product = await tx.product.findUnique({
             where: { id: item.productId },
-            select: { stockQuantity: true }
+            select: { quantity: true }
           });
           
           if (product) {
-            const currentStock = toNumber(product.stockQuantity);
+            const currentStock = toNumber(product.quantity);
             const quantityToRestore = toNumber(item.quantity);
             const newStock = currentStock + quantityToRestore;
             
             await tx.product.update({
               where: { id: item.productId },
-              data: { stockQuantity: newStock }
+              data: { quantity: newStock }
             });
           }
         }
       }
       
-      return convertOrderDecimals(updatedOrder);
+      return convertOrderDecimals(updatedOrder) as OrderResponse;
     });
   }
   
-  static async cancelOrder(orderId: number, userId: number, userRole: string) {
+  static async cancelOrder(orderId: number, userId: number, userRole: string): Promise<OrderResponse> {
     return await prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
@@ -434,25 +471,38 @@ export class OrdersService {
         throw new Error('Order not found');
       }
       
-      // Check authorization
-      if (userRole !== 'ADMIN' && order.buyerId !== userId) {
+      // Check authorization - Allow farmers to cancel orders containing their products
+      let isAuthorized = false;
+      
+      if (userRole === 'ADMIN') {
+        isAuthorized = true;
+      } else if (userRole === 'FARMER') {
+        // Check if this order contains products from this farmer
+        const hasFarmerProduct = order.orderItems.some(item => item.product.farmerId === userId);
+        isAuthorized = hasFarmerProduct;
+      } else if (userRole === 'BUYER') {
+        isAuthorized = order.buyerId === userId;
+      }
+      
+      if (!isAuthorized) {
         throw new Error('Unauthorized to cancel this order');
       }
       
-      // Only allow cancellation if status is PENDING
-      if (order.status !== 'PENDING') {
-        throw new Error('Only pending orders can be cancelled');
+      // Allow cancellation for PENDING, CONFIRMED, and PROCESSING statuses
+      const cancellableStatuses = ['PENDING', 'CONFIRMED', 'PROCESSING'];
+      if (!cancellableStatuses.includes(order.status)) {
+        throw new Error(`Order cannot be cancelled. Current status: ${order.status}. Only pending, confirmed, or processing orders can be cancelled.`);
       }
       
       // Restore stock quantities
       for (const item of order.orderItems) {
-        const currentStock = toNumber(item.product.stockQuantity);
+        const currentStock = toNumber(item.product.quantity);
         const quantityToRestore = toNumber(item.quantity);
         const newStock = currentStock + quantityToRestore;
         
         await tx.product.update({
           where: { id: item.productId },
-          data: { stockQuantity: newStock }
+          data: { quantity: newStock }
         });
       }
       
@@ -472,7 +522,7 @@ export class OrdersService {
           oldStatus: order.status,
           newStatus: OrderStatus.CANCELLED,
           changedBy: userId,
-          reason: 'Order cancelled by user'
+          reason: userRole === 'FARMER' ? 'Order cancelled by farmer' : 'Order cancelled by user'
         }
       });
       
@@ -482,22 +532,35 @@ export class OrdersService {
         currency: 'ETB' 
       }).format(toNumber(order.totalAmount));
       
-      // Notify user
+      // Notify buyer
       await tx.notification.create({
         data: {
-          userId,
+          userId: order.buyerId,
           title: `Order #${orderId} Cancelled`,
-          message: `Your order of ${formattedTotal} has been cancelled successfully.`,
+          message: `Your order of ${formattedTotal} has been cancelled.`,
           type: 'warning',
           orderId
         }
       });
       
-      return convertOrderDecimals(cancelledOrder);
+      // Also notify the farmer who cancelled (if it was a farmer)
+      if (userRole === 'FARMER') {
+        await tx.notification.create({
+          data: {
+            userId,
+            title: `Order #${orderId} Cancelled`,
+            message: `You have cancelled order #${orderId} of ${formattedTotal}.`,
+            type: 'warning',
+            orderId
+          }
+        });
+      }
+      
+      return convertOrderDecimals(cancelledOrder) as OrderResponse;
     });
   }
   
-  static async getOrderStats(userId: number) {
+  static async getOrderStats(userId: number): Promise<OrderStatsResponse> {
     const stats = await prisma.order.aggregate({
       where: { buyerId: userId },
       _count: true,
@@ -539,7 +602,7 @@ export class OrdersService {
     };
   }
   
-  static async getOrderStatusHistory(orderId: number, userId: number, userRole: string) {
+  static async getOrderStatusHistory(orderId: number, userId: number, userRole: string): Promise<OrderStatusHistoryResponse[]> {
     // Verify access
     const order = await prisma.order.findUnique({
       where: { id: orderId },
@@ -584,9 +647,15 @@ export class OrdersService {
     
     const userMap = new Map(users.map(u => [u.id, u]));
     
-    // Return history with user details (no Decimal fields to convert)
+    // Return history with user details
     return history.map(entry => ({
-      ...entry,
+      id: entry.id,
+      orderId: entry.orderId,
+      oldStatus: entry.oldStatus,
+      newStatus: entry.newStatus,
+      changedBy: entry.changedBy,
+      reason: entry.reason,
+      createdAt: entry.createdAt,
       changedByUser: userMap.get(entry.changedBy) || null
     }));
   }

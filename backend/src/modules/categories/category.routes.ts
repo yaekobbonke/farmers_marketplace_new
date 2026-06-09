@@ -6,8 +6,8 @@ const router = Router();
 const categoryController = new CategoryController();
 
 // Public routes
-router.get("/", categoryController.getAllCategories);
-router.get("/:id", categoryController.getCategoryById);
+router.get("/", authenticate, categoryController.getAllCategories);
+router.get("/:id", authenticate, categoryController.getCategoryById);
 
 // Admin only routes - authenticate first, then check role
 router.post("/", authenticate, requireRole("ADMIN"), categoryController.createCategory);

@@ -17,7 +17,7 @@ router.get("/", (req: any, res: any) => {
 });
 
 router.use("/auth", authRoutes);
-router.use("/products", productRoutes);
+router.use("/products", productRoutes);  //marketplace routes
 router.use("/prices", priceRoutes);
 router.use("/search", searchRoutes);
 router.use("/assistant", assistantRoutes);

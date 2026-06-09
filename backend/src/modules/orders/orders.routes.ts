@@ -5,7 +5,7 @@ import { authenticate, requireRole } from '../../middleware/authMiddleware';
 
 const router = Router();
 
-// ✅ All order routes require authentication
+// All order routes require authentication
 router.use(authenticate);
 
 // Create order

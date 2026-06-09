@@ -4,10 +4,8 @@ import { authenticate, requireRole } from "../../middleware/authMiddleware";
 
 const router = Router();
 
-/**
- * PUBLIC ROUTES (No authentication required)
- */
 
+router.use(authenticate);
 // Basic search
 router.get("/", SearchController.search);
 
@@ -26,10 +24,6 @@ router.get("/recommendations", SearchController.getRecommendations);
 // Similar products based on product ID
 router.get("/similar/:productId", SearchController.getSimilarProducts);
 
-/**
- * PROTECTED ROUTES (Authentication required)
- */
-router.use(authenticate);
 
 // User's search history
 router.get("/history", SearchController.getSearchHistory);

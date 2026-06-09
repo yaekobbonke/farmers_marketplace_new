@@ -4,22 +4,19 @@ import { authenticate, requireRole } from "../../middleware/authMiddleware";
 
 const router = Router();
 
+router.use(authenticate);
+
 /**
- * PUBLIC ROUTES (No authentication required)
+ * PROTECTED ROUTES (Authentication required)
  */
-router.get("/", ProductController.getAll);
+router.get("/", ProductController.getAll);      //marketplace route
 router.get("/search", ProductController.searchProducts);
 router.get("/featured", ProductController.getFeaturedProducts);
 router.get("/top-viewed", ProductController.getTopViewedProducts);
 router.get("/category/:categoryId", ProductController.getProductsByCategory);
 router.get("/:id", ProductController.getById);
 
-/**
- * PROTECTED ROUTES (Authentication required)
- */
-router.use(authenticate);
 
-// Farmer analytics routes
 router.get("/farmer/analytics", requireRole("FARMER", "ADMIN"), ProductController.getProductAnalytics);
 router.get("/farmer/products", requireRole("FARMER", "ADMIN"), ProductController.getFarmerProducts);
 router.get("/farmer/stats", requireRole("FARMER", "ADMIN"), ProductController.getFarmerStats);
