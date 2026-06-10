@@ -147,14 +147,16 @@ export class ProductController {
         });
       }
       
-      const { name, description, price, quantity, categoryId, unit, location, tags } = req.body;
+      // 🟢 Extracted stockQuantity out of the request body parameters
+      const { name, description, price, quantity, stockQuantity, categoryId, unit, location, tags } = req.body;
       
-      // Validate required fields - FIX: Use string array with explicit typing and push conditionally
+      // Validate required fields
       const missingFields: string[] = [];
       if (!name) missingFields.push("name");
       if (!description) missingFields.push("description");
       if (!price && price !== 0) missingFields.push("price");
       if (!quantity && quantity !== 0) missingFields.push("quantity");
+      if (stockQuantity === undefined || stockQuantity === null) missingFields.push("stockQuantity");
       if (!categoryId && categoryId !== 0) missingFields.push("categoryId");
       
       if (missingFields.length > 0) {
@@ -165,10 +167,11 @@ export class ProductController {
         });
       }
       
-      // Validate price and quantity
+      // Validate metrics and structural types
       const priceNum = parseFloat(price);
-      const quantityNum = parseInt(quantity);
-      const categoryIdNum = parseInt(categoryId);
+      const quantityNum = parseFloat(quantity); // 🟢 Treated as Float/Decimal for weights/sizes
+      const stockQtyNum = parseInt(stockQuantity, 10); // 🟢 Treated as strict base-10 integer for volume count
+      const categoryIdNum = parseInt(categoryId, 10);
       
       if (isNaN(priceNum) || priceNum <= 0) {
         return res.status(400).json({ 
@@ -177,10 +180,17 @@ export class ProductController {
         });
       }
       
-      if (isNaN(quantityNum) || quantityNum < 0) {
+      if (isNaN(quantityNum) || quantityNum <= 0) {
         return res.status(400).json({ 
           success: false, 
-          message: "Quantity must be a non-negative number" 
+          message: "Pack size or quantity must be a positive number" 
+        });
+      }
+
+      if (isNaN(stockQtyNum) || stockQtyNum < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Stock quantity available must be a non-negative integer"
         });
       }
       
@@ -196,6 +206,7 @@ export class ProductController {
         description: description.trim(),
         price: priceNum,
         quantity: quantityNum,
+        stockQuantity: stockQtyNum, // 🟢 Included inside operational service payload
         categoryId: categoryIdNum,
         unit: unit || "piece",
         location: location || null,
@@ -242,9 +253,10 @@ export class ProductController {
         });
       }
       
-      // Validate update data - FIX: Use Record type for update data
+      // Validate update data
       const updateData: Record<string, any> = {};
-      const allowedFields = ["name", "description", "price", "quantity", "categoryId", "unit", "location", "tags"];
+      // 🟢 Appended "stockQuantity" into the security filter array list
+      const allowedFields = ["name", "description", "price", "quantity", "stockQuantity", "categoryId", "unit", "location", "tags"];
       
       for (const field of allowedFields) {
         const value = req.body[field];
@@ -259,16 +271,25 @@ export class ProductController {
             }
             updateData[field] = priceNum;
           } else if (field === "quantity") {
-            const quantityNum = parseInt(value);
-            if (isNaN(quantityNum) || quantityNum < 0) {
+            const quantityNum = parseFloat(value); // 🟢 Kept flexible float sizing values
+            if (isNaN(quantityNum) || quantityNum <= 0) {
               return res.status(400).json({ 
                 success: false, 
-                message: "Quantity must be a non-negative number" 
+                message: "Quantity dimension pack must be a positive number" 
               });
             }
             updateData[field] = quantityNum;
+          } else if (field === "stockQuantity") {
+            const stockQtyNum = parseInt(value, 10); // 🟢 Handles clean updates to storage item count levels
+            if (isNaN(stockQtyNum) || stockQtyNum < 0) {
+              return res.status(400).json({
+                success: false,
+                message: "Stock counts cannot drop beneath zero values"
+              });
+            }
+            updateData[field] = stockQtyNum;
           } else if (field === "categoryId") {
-            const categoryIdNum = parseInt(value);
+            const categoryIdNum = parseInt(value, 10);
             if (isNaN(categoryIdNum) || categoryIdNum <= 0) {
               return res.status(400).json({ 
                 success: false, 

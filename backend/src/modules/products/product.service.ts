@@ -6,7 +6,8 @@ interface ProductData {
   name: string;
   description: string;
   price: number;
-  quantity: number;
+  quantity: number;      // e.g., Package Size/Weight (e.g., 5 for 5kg)
+  stockQuantity: number; // 🔥 Added: Number of available units in stock
   categoryId: number;
   unit?: string;
   location?: string;
@@ -26,7 +27,7 @@ interface ProductAnalytics {
   revenue: number;
   orderCount: number;
   viewToSaleRatio: string;
-  stock: number;
+  stock: number;         // Map this to stockQuantity now
   stockStatus: "healthy" | "low" | "critical";
   status: string;
   priceHistory: { date: Date; price: number }[];
@@ -59,6 +60,7 @@ interface BaseProduct {
   description: string;
   price: number;
   quantity: number;
+  stockQuantity: number; // 🔥 Added to base type
   unit: string | null;
   location: string | null;
   tags: string | null;
@@ -212,7 +214,7 @@ export class ProductService {
     return products as unknown as ProductWithPriceHistory[];
   }
 
-  // ✅ Get farmer's dashboard stats
+  // ✅ Get farmer's dashboard stats - Fixed to track stockQuantity
   static async getFarmerStats(userId: number): Promise<FarmerStats> {
     if (!userId || isNaN(userId)) {
       throw new Error("Invalid user ID");
@@ -224,6 +226,7 @@ export class ProductService {
         id: true,
         price: true,
         quantity: true,
+        stockQuantity: true, // 🔥 Added
         is_verified: true,
         status: true,
         views: true
@@ -233,8 +236,12 @@ export class ProductService {
     const totalProducts = products.length;
     const pendingApproval = products.filter(p => !p.is_verified).length;
     const approvedCount = products.filter(p => p.is_verified).length;
-    const lowStockCount = products.filter(p => toNumber(p.quantity) < 10).length;
-    const inventoryValue = products.reduce((sum, p) => sum + (toNumber(p.price) * toNumber(p.quantity)), 0);
+    
+    // 💡 Evaluating actual available units (stockQuantity) for low stock warning instead of package sizes
+    const lowStockCount = products.filter(p => toNumber(p.stockQuantity) < 10).length;
+    
+    // 💡 Financial asset tracking evaluates units remaining * price
+    const inventoryValue = products.reduce((sum, p) => sum + (toNumber(p.price) * toNumber(p.stockQuantity)), 0);
     const totalViews = products.reduce((sum, p) => sum + (p.views || 0), 0);
     
     const totalOrders = await prisma.order.count({ 
@@ -275,14 +282,15 @@ export class ProductService {
     };
   }
 
-  // ✅ Create new product - with duplicate prevention
+  // ✅ Create new product - with stockQuantity persistence
   static async create(userId: number, data: ProductData) {
     const product = await prisma.product.create({
       data: {
         name: data.name,
         description: data.description,
         price: data.price,
-        quantity: data.quantity,
+        quantity: data.quantity, 
+        stockQuantity: data.stockQuantity, // 🔥 Persisting available items counter
         categoryId: data.categoryId,
         unit: data.unit || "piece",
         location: data.location || null,
@@ -294,7 +302,6 @@ export class ProductService {
       }
     });
     
-    // Check for duplicate notification within last minute
     const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
     const recentNotification = await prisma.notification.findFirst({
       where: {
@@ -317,7 +324,7 @@ export class ProductService {
     return product;
   }
 
-  // ✅ Update existing product - with duplicate prevention
+  // ✅ Update existing product - Supports partial parameters safely
   static async update(id: number, userId: number, data: Partial<ProductData>, role?: string) {
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) throw new Error("Product not found");
@@ -328,10 +335,9 @@ export class ProductService {
 
     const updatedProduct = await prisma.product.update({
       where: { id },
-      data
+      data // Partial data naturally supports stockQuantity if dropped in by the controller
     });
     
-    // If product was updated by farmer, send confirmation (with duplicate prevention)
     if (role !== "ADMIN") {
       const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
       const recentNotification = await prisma.notification.findFirst({
@@ -356,7 +362,7 @@ export class ProductService {
     return updatedProduct;
   }
 
-  // ✅ Delete product - with duplicate prevention
+  // ✅ Delete product
   static async remove(id: number, userId: number, role?: string) {
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) throw new Error("Product not found");
@@ -410,7 +416,7 @@ export class ProductService {
     return products as unknown as ProductWithFullFarmer[];
   }
 
-  // ✅ Admin verify a product - WITH DUPLICATE PREVENTION
+  // ✅ Admin verify a product
   static async verifyProduct(id: number) {
     const product = await prisma.product.findUnique({
       where: { id },
@@ -613,30 +619,30 @@ export class ProductService {
     return products as unknown as ProductWithMinimalFarmer[];
   }
 
-  // ✅ Update product stock - with duplicate prevention
+  // 🔥 Fixed to target stockQuantity instead of pack quantity
   static async updateStock(productId: number, quantitySold: number) {
     const product = await prisma.product.findUnique({
       where: { id: productId },
-      select: { quantity: true, status: true, name: true, farmerId: true }
+      select: { stockQuantity: true, status: true, name: true, farmerId: true }
     });
     
     if (!product) throw new Error("Product not found");
     
-    const currentQuantity = toNumber(product.quantity);
-    const newQuantity = currentQuantity - quantitySold;
-    const newStatus = newQuantity <= 0 ? "SOLD_OUT" : "AVAILABLE";
+    const currentStock = toNumber(product.stockQuantity);
+    const newStock = currentStock - quantitySold;
+    const newStatus = newStock <= 0 ? "SOLD_OUT" : "AVAILABLE";
     
     const updatedProduct = await prisma.product.update({
       where: { id: productId },
       data: {
-        quantity: newQuantity,
+        stockQuantity: newStock, // Deduct from items array
         status: newStatus
       }
     });
     
     const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
     
-    if (newQuantity < 10 && newQuantity > 0) {
+    if (newStock < 10 && newStock > 0) {
       const recentNotification = await prisma.notification.findFirst({
         where: {
           userId: product.farmerId,
@@ -650,13 +656,13 @@ export class ProductService {
         await NotificationService.createNotification({
           userId: product.farmerId,
           title: "⚠️ Low Stock Alert",
-          message: `Your product "${product.name}" is running low. Only ${newQuantity} units left!`,
+          message: `Your product "${product.name}" is running low. Only ${newStock} items left!`,
           type: "warning"
         });
       }
     }
     
-    if (newQuantity <= 0) {
+    if (newStock <= 0) {
       const recentNotification = await prisma.notification.findFirst({
         where: {
           userId: product.farmerId,
@@ -679,18 +685,18 @@ export class ProductService {
     return updatedProduct;
   }
 
-  // ✅ Get low stock products
+  // ✅ Get low stock products using stockQuantity
   static async getLowStockProducts(userId: number, threshold: number = 10) {
     return prisma.product.findMany({
       where: {
         farmerId: userId,
-        quantity: { lt: threshold },
+        stockQuantity: { lt: threshold }, // 🔥 Checked field changed from quantity
         status: "AVAILABLE"
       },
       include: {
         category: true
       },
-      orderBy: { quantity: "asc" }
+      orderBy: { stockQuantity: "asc" }
     });
   }
 
@@ -744,7 +750,7 @@ export class ProductService {
     }
   }
 
-  // Get product analytics for farmer
+  // ✅ Get product analytics for farmer - Updated for stockQuantity
   static async getProductAnalytics(userId: number, period: string = "week") {
     if (!userId || isNaN(userId)) {
       throw new Error("Invalid user ID");
@@ -797,7 +803,8 @@ export class ProductService {
       const orderCount = product.orderItems.length;
       const views = product.views || 0;
       const viewToSaleRatio = views > 0 ? (orderCount / views) * 100 : 0;
-      const currentStock = toNumber(product.quantity);
+      
+      const currentStock = toNumber(product.stockQuantity); // 🔥 Adjusted target
       let stockStatus: "healthy" | "low" | "critical" = "healthy";
       if (currentStock < 5) stockStatus = "critical";
       else if (currentStock < 10) stockStatus = "low";
