@@ -71,10 +71,12 @@ export default function PricePrediction() {
       }
       
       const productId = prices.commodity_id;
-      console.log("Fetching prediction for productId:", productId);
+      console.log("Fetching prediction for:", { productId, commodity, region });
       
-      // Use the correct API endpoint (without .js extension for App Router)
-      const response = await fetch(`/api/assistants/forecast/predict?productId=${productId}`, {
+      // Dynamic URL tracking both chosen commodity and localized region state
+      const url = `/api/assistants/forecast/predict?productId=${productId}&commodity=${encodeURIComponent(commodity)}&region=${encodeURIComponent(region)}`;
+      
+      const response = await fetch(url, {
         method: "GET",
         headers: { 
           "Content-Type": "application/json",
