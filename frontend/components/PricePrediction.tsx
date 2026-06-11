@@ -96,23 +96,32 @@ export default function PricePrediction() {
         throw new Error(data.error || data.message || "Prediction failed");
       }
       
-      // Handle different response structures
-      let predictionData = data.data || data.prediction || data;
-      
-      // Transform if needed
+      // Handle FastAPI response structure
+      const predictionData =
+        data?.data?.prediction ||
+        data?.prediction ||
+        data;
+
+      console.log("Parsed prediction:", predictionData);
+
       const result: PredictionResult = {
         commodity: predictionData.commodity || commodity,
         region: predictionData.region || region,
-        predicted_price_etb: predictionData.predicted_price_etb || predictionData.predictedPrice || 0,
-        current_market_baseline: predictionData.current_market_baseline || predictionData.currentPrice || prices.rfq,
-        price_range: predictionData.price_range || {
-          low: (predictionData.predicted_price_etb || 0) * 0.85,
-          high: (predictionData.predicted_price_etb || 0) * 1.15
+        predicted_price_etb: Number(
+          predictionData.predicted_price_etb || predictionData.predictedPrice || 0
+        ),
+        current_market_baseline:
+          predictionData.current_market_baseline ?? predictionData.currentPrice ?? prices.rfq,
+        price_range: {
+          low: Number(predictionData.price_range?.low ?? (predictionData.predicted_price_etb || 0) * 0.85),
+          high: Number(predictionData.price_range?.high ?? (predictionData.predicted_price_etb || 0) * 1.15),
         },
         trend: predictionData.trend || "stable",
-        confidence: predictionData.confidence || 75
+        confidence: Number(
+          predictionData.confidence ?? 75
+        ),
       };
-      
+
       setPrediction(result);
       
       // Add to history
@@ -138,7 +147,7 @@ export default function PricePrediction() {
         timestamp: new Date().toLocaleString() + " (estimated)"
       }, ...prev].slice(0, 5));
     } finally {
-      setLoading(false);
+      loading && setLoading(false);
     }
   };
 
