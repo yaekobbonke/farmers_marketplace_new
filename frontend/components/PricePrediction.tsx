@@ -147,7 +147,7 @@ export default function PricePrediction() {
         timestamp: new Date().toLocaleString() + " (estimated)"
       }, ...prev].slice(0, 5));
     } finally {
-      loading && setLoading(false);
+      setLoading(false);
     }
   };
 
