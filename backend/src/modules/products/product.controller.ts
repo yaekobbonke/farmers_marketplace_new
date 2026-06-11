@@ -267,8 +267,8 @@ export class ProductController {
       
       for (const field of allowedFields) {
         const value = req.body[field];
-        if (value !== undefined && value !== null) {
-          if (field === "price") {
+        if (value !== undefined) {
+          if (field === "price" && value !== null) {
             const priceNum = parseFloat(value);
             if (isNaN(priceNum) || priceNum <= 0) {
               return res.status(400).json({ 
@@ -277,7 +277,7 @@ export class ProductController {
               });
             }
             updateData[field] = priceNum;
-          } else if (field === "quantity") {
+          } else if (field === "quantity" && value !== null) {
             const quantityNum = parseFloat(value);
             if (isNaN(quantityNum) || quantityNum <= 0) {
               return res.status(400).json({ 
@@ -287,15 +287,19 @@ export class ProductController {
             }
             updateData[field] = quantityNum;
           } else if (field === "stockQuantity") {
-            const stockQtyNum = parseInt(value, 10);
-            if (isNaN(stockQtyNum) || stockQtyNum < 0) {
-              return res.status(400).json({
-                success: false,
-                message: "Stock counts cannot drop beneath zero values"
-              });
+            if (value === null || value === "") {
+              updateData[field] = undefined;
+            } else {
+              const stockQtyNum = parseInt(value, 10);
+              if (isNaN(stockQtyNum) || stockQtyNum < 0) {
+                return res.status(400).json({
+                  success: false,
+                  message: "Stock counts cannot drop beneath zero values"
+                });
+              }
+              updateData[field] = stockQtyNum;
             }
-            updateData[field] = stockQtyNum;
-          } else if (field === "categoryId") {
+          } else if (field === "categoryId" && value !== null) {
             const categoryIdNum = parseInt(value, 10);
             if (isNaN(categoryIdNum) || categoryIdNum <= 0) {
               return res.status(400).json({ 
