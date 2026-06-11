@@ -65,7 +65,7 @@ model Product {
   embeddingId   String?
   latitude      Float?
   longitude     Float?
-  stockQuantity Int           @default(0)
+  stockQuantity Int?           @default(0)
 
   // Relations
   category         Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
