@@ -7,7 +7,7 @@ interface ProductData {
   description: string;
   price: number;
   quantity: number;      // e.g., Package Size/Weight (e.g., 5 for 5kg)
-  stockQuantity: number; // 🔥 Added: Number of available units in stock
+  stockQuantity?: number; // 🔥 Added: Number of available units in stock
   categoryId: number;
   unit?: string;
   location?: string;
