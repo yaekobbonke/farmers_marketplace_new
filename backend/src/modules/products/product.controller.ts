@@ -156,7 +156,7 @@ export class ProductController {
       if (!description) missingFields.push("description");
       if (!price && price !== 0) missingFields.push("price");
       if (!quantity && quantity !== 0) missingFields.push("quantity");
-      if (stockQuantity === undefined || stockQuantity === null) missingFields.push("stockQuantity");
+      //if (stockQuantity === undefined || stockQuantity === null) missingFields.push("stockQuantity");
       if (!categoryId && categoryId !== 0) missingFields.push("categoryId");
       
       if (missingFields.length > 0) {
