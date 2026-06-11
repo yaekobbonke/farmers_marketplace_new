@@ -1,82 +1,73 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
-  console.log("🚀 Prediction API was called");
+  console.log("Vercel Proxy calling Local XGBoost Model");
   
   try {
     const searchParams = request.nextUrl.searchParams;
     const productId = searchParams.get('productId');
     
-    console.log("📊 Product ID received:", productId);
+    console.log("Product ID received from frontend:", productId);
     
     if (!productId) {
       return NextResponse.json(
-        { 
-          success: false, 
-          error: 'Product ID is required' 
-        },
+        { success: false, error: 'Product ID is required' },
         { status: 400 }
       );
     }
-    
-    // Mock data for different products
-    const productData: Record<number, any> = {
-      1: { name: 'Maize (White)', price: 35, trend: 'up', confidence: 88 },
-      2: { name: 'Wheat', price: 40, trend: 'up', confidence: 85 },
-      3: { name: 'Coffee', price: 350, trend: 'up', confidence: 92 },
-      4: { name: 'Barley', price: 32, trend: 'down', confidence: 78 },
-      5: { name: 'Sorghum', price: 28, trend: 'stable', confidence: 84 },
-      67: { name: 'Teff', price: 55, trend: 'up', confidence: 90 },
-    };
-    
-    const id = parseInt(productId);
-    const product = productData[id] || {
-      name: 'Unknown Product',
-      price: 50,
-      trend: 'stable',
-      confidence: 75
-    };
-    
-    // Calculate predicted price
-    let predictedPrice = product.price;
-    if (product.trend === 'up') {
-      predictedPrice = Math.round(product.price * 1.12);
-    } else if (product.trend === 'down') {
-      predictedPrice = Math.round(product.price * 0.92);
-    } else {
-      predictedPrice = Math.round(product.price * 1.02);
+
+    // Updated to pull from FASTAPI_URL
+    const FASTAPI_URL = process.env.FASTAPI_URL;
+
+    if (!FASTAPI_URL) {
+      console.error("Environment variable FASTAPI_URL is missing in Vercel!");
+      return NextResponse.json(
+        { success: false, error: 'Backend API URL configuration is missing' },
+        { status: 500 }
+      );
     }
+
+    // Target your exact prediction endpoint layout
+    const localTargetUrl = `${FASTAPI_URL}/api/v1/forecast/predict`;
+    console.log(`Forwarding payload to: ${localTargetUrl}`);
     
-    const response = {
-      success: true,
-      data: {
-        productId: id,
-        commodity: product.name,
-        region: 'ADDIS ABABA',
-        predicted_price_etb: predictedPrice,
-        current_market_baseline: product.price,
-        price_range: {
-          low: Math.round(predictedPrice * 0.85),
-          high: Math.round(predictedPrice * 1.15),
-        },
-        trend: product.trend === 'up' ? 'increasing' : product.trend === 'down' ? 'decreasing' : 'stable',
-        confidence: product.confidence,
-        productName: product.name,
-        currentPrice: product.price,
-        predictedPrice: predictedPrice,
+    const aiResponse = await fetch(localTargetUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // Bypasses the ngrok phishing warning interstitial screen
+        'ngrok-skip-browser-warning': 'true',
       },
-      message: 'Prediction generated successfully',
-    };
-    
-    console.log("✅ Sending response for product:", product.name);
-    return NextResponse.json(response);
+      body: JSON.stringify({ 
+        product_id: parseInt(productId)
+      }),
+      cache: 'no-store', 
+    });
+
+    if (!aiResponse.ok) {
+      const errorText = await aiResponse.text();
+      console.error(`Local FastAPI returned error (${aiResponse.status}):`, errorText);
+      return NextResponse.json(
+        { success: false, error: `Local AI Service Error: ${aiResponse.statusText}` },
+        { status: aiResponse.status }
+      );
+    }
+
+    const realAIData = await aiResponse.json();
+    console.log("Real prediction calculated by local XGBoost successfully");
+
+    return NextResponse.json({
+      success: true,
+      data: realAIData,
+      message: 'Prediction generated successfully from local XGBoost Model'
+    });
     
   } catch (error) {
-    console.error('❌ Prediction API Error:', error);
+    console.error('Proxy Prediction API Error:', error);
     return NextResponse.json(
       { 
         success: false, 
-        error: 'Failed to generate prediction',
+        error: 'Failed to communicate with local machine server over ngrok',
         details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
@@ -84,7 +75,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Also handle OPTIONS for CORS if needed
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
