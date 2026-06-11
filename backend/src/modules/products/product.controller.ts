@@ -169,22 +169,23 @@ export class ProductController {
       const quantityNum = parseFloat(quantity);
       const categoryIdNum = parseInt(categoryId, 10);
 
-      // stockQuantity is OPTIONAL
-      let stockQtyNum: number | null = null;
+      // stockQuantity is OPTIONAL - Using undefined to align with ProductData types
+      let stockQtyNum: number | undefined = undefined;
 
       if (
         stockQuantity !== undefined &&
         stockQuantity !== null &&
         stockQuantity !== ""
       ) {
-        stockQtyNum = parseInt(stockQuantity, 10);
+        const parsedStock = parseInt(stockQuantity, 10);
 
-        if (isNaN(stockQtyNum) || stockQtyNum < 0) {
+        if (isNaN(parsedStock) || parsedStock < 0) {
           return res.status(400).json({
             success: false,
             message: "Stock quantity available must be a non-negative integer"
           });
         }
+        stockQtyNum = parsedStock;
       }
       
       if (isNaN(priceNum) || priceNum <= 0) {
@@ -213,7 +214,7 @@ export class ProductController {
         description: description.trim(),
         price: priceNum,
         quantity: quantityNum,
-        stockQuantity: stockQtyNum, 
+        stockQuantity: stockQtyNum ?? undefined, 
         categoryId: categoryIdNum,
         unit: unit || "piece",
         location: location || null,
