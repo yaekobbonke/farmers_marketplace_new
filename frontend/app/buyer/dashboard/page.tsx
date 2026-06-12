@@ -66,8 +66,8 @@ interface Order {
   }>;
 }
 
-// Session configuration
-const SESSION_TIMEOUT_MINUTES = 1;
+// Session configuration - CHANGED from 1 to 5 minutes
+const SESSION_TIMEOUT_MINUTES = 5;
 const CHECK_INTERVAL_MS = 1000;
 
 export default function BuyerDashboard() {
@@ -289,7 +289,7 @@ export default function BuyerDashboard() {
                 <AlertCircle size={32} className="text-red-600" />
               </div>
               <h3 className="text-xl font-bold text-slate-900 mb-2">Session Expired</h3>
-              <p className="text-slate-600 mb-2">Your session has expired due to {SESSION_TIMEOUT_MINUTES} minute of inactivity.</p>
+              <p className="text-slate-600 mb-2">Your session has expired due to {SESSION_TIMEOUT_MINUTES} minutes of inactivity.</p>
               <button onClick={() => router.push("/login")} className="px-4 py-2 bg-blue-600 text-white rounded-xl font-medium">
                 Go to Login
               </button>
@@ -300,7 +300,7 @@ export default function BuyerDashboard() {
 
       <div className="fixed top-0 left-0 right-0 z-50">
         <div className="h-1 bg-gray-200">
-          <div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: `${(timeLeft / 60) * 100}%` }} />
+          <div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: `${(timeLeft / (SESSION_TIMEOUT_MINUTES * 60)) * 100}%` }} />
         </div>
       </div>
 
