@@ -51,7 +51,7 @@ import MarketTable from "@/components/MarketTable";
 import PricePrediction from "@/components/PricePrediction";
 import Link from "next/link";
 
-// Session configuration - CHANGED from 1 to 5
+// Session configuration - 5 minutes timeout
 const SESSION_TIMEOUT_MINUTES = 5;
 const CHECK_INTERVAL_MS = 1000;
 
@@ -154,6 +154,13 @@ export default function FarmerDashboard() {
   const getFirstName = () => {
     const fullName = getUserFullName();
     return fullName.split(' ')[0];
+  };
+
+  // Format time as MM:SS
+  const formatTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
   // Update last activity with throttling
@@ -391,13 +398,6 @@ export default function FarmerDashboard() {
     }
   };
 
-  // Format time as MM:SS
-  const formatTime = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
-
   // Effect for applying filters when search/filter changes
   useEffect(() => {
     applyFilters(products, searchQuery, statusFilter);
@@ -525,7 +525,7 @@ export default function FarmerDashboard() {
           </div>
           
           <div className="flex flex-wrap gap-3">
-            {/* Session timer - REMOVED "Session expires in:" text */}
+            {/* Session timer - just counting time, no text */}
             <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-2 rounded-xl text-sm font-mono font-bold">
               <Clock size={16} className="text-slate-400" />
               <span className={`${timeLeft < 60 ? 'text-red-500 animate-pulse' : 'text-slate-600'}`}>
@@ -565,7 +565,7 @@ export default function FarmerDashboard() {
               <Plus size={20} /> List Product
             </button>
 
-            {/* LOGOUT BUTTON REMOVED */}
+            {/* LOGOUT BUTTON REMOVED - now only in dropdown menu */}
           </div>
         </div>
 
@@ -781,6 +781,7 @@ export default function FarmerDashboard() {
                               )}
                               Delete
                             </button>
+                            {/* Logout button in dropdown menu */}
                             <button
                               onClick={logout}
                               className="w-full px-4 py-2 text-left text-sm flex items-center gap-2 text-red-600 border-t border-slate-100 hover:bg-red-50 transition-colors"
