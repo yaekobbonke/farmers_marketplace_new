@@ -137,7 +137,8 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
       <Navbar />
       <AIAssistant userRole="FARMER" userName={userName} />
       <main className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        {/* REMOVED py-8, now NO top padding */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
           {children}
         </div>
       </main>
