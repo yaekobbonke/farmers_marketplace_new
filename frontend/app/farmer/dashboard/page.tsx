@@ -51,8 +51,8 @@ import MarketTable from "@/components/MarketTable";
 import PricePrediction from "@/components/PricePrediction";
 import Link from "next/link";
 
-// Session configuration
-const SESSION_TIMEOUT_MINUTES = 1;
+// Session configuration - 5 minutes timeout
+const SESSION_TIMEOUT_MINUTES = 5;
 const CHECK_INTERVAL_MS = 1000;
 
 interface Product {
@@ -112,7 +112,7 @@ export default function FarmerDashboard() {
   const [showSessionExpired, setShowSessionExpired] = useState(false);
   const [timeLeft, setTimeLeft] = useState(SESSION_TIMEOUT_MINUTES * 60);
   const lastActivityRef = useRef<number>(Date.now());
-  const lastThrottledUpdateRef = useRef<number>(Date.now()); // For throttling UI updates
+  const lastThrottledUpdateRef = useRef<number>(Date.now());
   const sessionTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   const [stats, setStats] = useState<DashboardStats>({
@@ -156,10 +156,10 @@ export default function FarmerDashboard() {
     return fullName.split(' ')[0];
   };
 
-  // Update last activity with throttling - tracks instantly but updates UI at most every 2 seconds
+  // Update last activity with throttling
   const updateLastActivity = useCallback(() => {
     const now = Date.now();
-    lastActivityRef.current = now; // Instantly tracks the time behind the scenes
+    lastActivityRef.current = now;
     
     // Only updates the state/UI at most once every 2 seconds
     if (now - lastThrottledUpdateRef.current > 2000) {
@@ -435,6 +435,13 @@ export default function FarmerDashboard() {
     };
   }, [fetchDashboardData, fetchNotifications, router]);
 
+  // Format time as MM:SS
+  const formatTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
   const formatETB = (val: number) => 
     new Intl.NumberFormat('en-ET', { 
         style: 'currency', 
@@ -519,11 +526,11 @@ export default function FarmerDashboard() {
           </div>
           
           <div className="flex flex-wrap gap-3">
-            {/* Session timer indicator */}
-            <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-2 rounded-xl text-sm">
+            {/* Session timer - just the counting time, no text */}
+            <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-2 rounded-xl text-sm font-mono font-bold">
               <Clock size={16} className="text-slate-400" />
-              <span className="text-slate-600">
-                Session expires in: {Math.floor(timeLeft / 60)}m {timeLeft % 60}s
+              <span className={`${timeLeft < 60 ? 'text-red-500 animate-pulse' : 'text-slate-600'}`}>
+                {formatTime(timeLeft)}
               </span>
             </div>
             
@@ -559,12 +566,7 @@ export default function FarmerDashboard() {
               <Plus size={20} /> List Product
             </button>
 
-            <button 
-              onClick={logout}
-              className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 px-4 py-2.5 rounded-xl font-medium hover:bg-red-100 transition-all"
-            >
-              <LogOut size={18} /> Logout
-            </button>
+            {/* Logout button has been REMOVED from here - now only available in dropdown menu */}
           </div>
         </div>
 
@@ -861,93 +863,4 @@ export default function FarmerDashboard() {
               <button className="text-sm text-slate-500 hover:text-green-600 font-medium">
                 Last 30 Days
               </button>
-              <Link href="/marketplace" className="text-sm text-green-600 font-medium hover:underline flex items-center gap-1">
-                View All <ChevronRight size={14} />
-              </Link>
-            </div>
-          </div>
-          <MarketTable />
-        </div>
-
-        {/* Notification Bell Dropdown */}
-        {showNotifications && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-end p-4" onClick={() => setShowNotifications(false)}>
-            <div className="mt-16 w-96 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-                <h3 className="font-bold text-slate-900">Notifications</h3>
-                {notifications.length > 0 && (
-                  <button
-                    onClick={markAllNotificationsAsRead}
-                    className="text-xs text-green-600 hover:underline"
-                  >
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-              <div className="max-h-96 overflow-y-auto">
-                {notifications.length === 0 ? (
-                  <div className="p-8 text-center text-slate-400">
-                    <Bell size={32} className="mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No notifications yet</p>
-                  </div>
-                ) : (
-                  notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer ${
-                        !notification.read ? "bg-green-50/30" : ""
-                      }`}
-                      onClick={() => markNotificationAsRead(notification.id)}
-                    >
-                      <div className="flex gap-3">
-                        <div className="shrink-0">
-                          {notification.type === "success" ? (
-                            <CheckCircle size={14} className="text-green-500" />
-                          ) : notification.type === "warning" ? (
-                            <AlertCircle size={14} className="text-yellow-500" />
-                          ) : (
-                            <Bell size={14} className="text-blue-500" />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-slate-900">{notification.title}</p>
-                          <p className="text-xs text-slate-500 mt-1">{notification.message}</p>
-                          <p className="text-[10px] text-slate-400 mt-1">
-                            {new Date(notification.createdAt).toLocaleString()}
-                          </p>
-                        </div>
-                        {!notification.read && (
-                          <div className="w-2 h-2 bg-green-500 rounded-full mt-2" />
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Enhanced Stat Card Component
-function StatCard({ title, value, icon, color, subtitle }: any) {
-  return (
-    <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all group">
-      <div className="flex items-center justify-between mb-3">
-        <div className={`p-2.5 rounded-xl ${color} group-hover:scale-110 transition-transform`}>
-          {icon}
-        </div>
-      </div>
-      <div>
-        <p className="text-2xl font-bold text-slate-900">{value}</p>
-        <p className="text-xs font-medium text-slate-500 mt-0.5">{title}</p>
-        {subtitle && (
-          <p className="text-[10px] text-slate-400 mt-1">{subtitle}</p>
-        )}
-      </div>
-    </div>
-  );
-}
+              <Link href="/
