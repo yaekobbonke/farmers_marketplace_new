@@ -43,7 +43,6 @@ import {
   Trash2,
   Copy,
   TrendingDown,
-  LogOut,
   ListOrdered
 } from "lucide-react";
 import { AxiosError } from "axios";
@@ -566,7 +565,7 @@ export default function FarmerDashboard() {
               <Plus size={20} /> List Product
             </button>
 
-            {/* Logout button has been REMOVED from here - now only available in dropdown menu */}
+            {/* NO LOGOUT BUTTON HERE - It's in the dropdown menu below */}
           </div>
         </div>
 
@@ -781,6 +780,13 @@ export default function FarmerDashboard() {
                                 <Trash2 size={14} />
                               )}
                               Delete
+                            </button>
+                            {/* Logout option in dropdown menu */}
+                            <button
+                              onClick={logout}
+                              className="w-full px-4 py-2 text-left text-sm flex items-center gap-2 text-red-600 border-t border-slate-100 hover:bg-red-50 transition-colors"
+                            >
+                              <LogOut size={14} /> Logout
                             </button>
                           </div>
                         )}
