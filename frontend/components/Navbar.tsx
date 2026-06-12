@@ -20,10 +20,10 @@ import {
   CheckCircle,
   AlertCircle,
   XCircle,
-  ShoppingCart // ✅ Added ShoppingCart icon
+  ShoppingCart
 } from "lucide-react";
 import api from "@/lib/api";
-import { useCart } from "@/contexts/CartContext"; // ✅ Import useCart
+import { useCart } from "@/contexts/CartContext";
 
 interface UserData {
   id: number;
@@ -43,7 +43,6 @@ interface Notification {
   productId?: number;
 }
 
-// ✅ Function to load user from localStorage synchronously for initial state
 const getUserFromStorage = (): UserData | null => {
   if (typeof window === 'undefined') return null;
   const userStr = localStorage.getItem("user");
@@ -60,7 +59,6 @@ export default function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  // ✅ Initialize user state directly to avoid useEffect
   const [user, setUser] = useState<UserData | null>(getUserFromStorage);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -69,19 +67,15 @@ export default function Navbar() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
   
-  // Notification states
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   
-  // ✅ Get cart data from CartContext
   const { totalItems } = useCart();
 
-  // Set mounted flag after component mounts on client
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // ✅ Memoize fetchNotifications to prevent unnecessary re-renders
   const fetchNotifications = useCallback(async () => {
     const token = localStorage.getItem("token");
     if (!user || !token) {
@@ -104,7 +98,6 @@ export default function Navbar() {
     }
   }, [user]);
 
-  // Mark notification as read
   const markAsRead = useCallback(async (notificationId: number) => {
     try {
       await api.put(`/notifications/${notificationId}/read`);
@@ -121,7 +114,6 @@ export default function Navbar() {
     }
   }, []);
 
-  // Mark all as read
   const markAllAsRead = useCallback(async () => {
     try {
       await api.put("/notifications/mark-all-read");
@@ -134,7 +126,6 @@ export default function Navbar() {
     }
   }, []);
 
-  // ✅ Fixed: Use timeout to avoid cascading renders
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (user && token && mounted) {
@@ -144,7 +135,6 @@ export default function Navbar() {
     }
   }, [user, fetchNotifications, mounted]);
 
-  // ✅ Fixed: Handle scroll with cleanup
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 10);
@@ -153,7 +143,6 @@ export default function Navbar() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // ✅ Fixed: Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -167,7 +156,6 @@ export default function Navbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ✅ Fixed: Close menus on route change - deferred to avoid warning
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       setIsMobileMenuOpen(false);
@@ -241,7 +229,6 @@ export default function Navbar() {
     }
   };
 
-  // Navigation items - Public pages only (STATIC - never changes)
   const mainNavItems = [
     { href: "/", icon: <Home size={18} />, label: "Home" },
     { href: "/about", icon: <Info size={18} />, label: "About Us" },
@@ -279,7 +266,7 @@ export default function Navbar() {
             </div>
           </Link>
 
-          {/* Desktop Navigation - STATIC always visible */}
+          {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-1 lg:gap-2 bg-slate-50 p-1 rounded-2xl border border-slate-100">
             {mainNavItems.map((item) => (
               <NavLink
@@ -292,17 +279,16 @@ export default function Navbar() {
             ))}
           </div>
 
-          {/* Desktop Right Actions - Only render after mounted to prevent hydration mismatch */}
+          {/* Desktop Right Actions */}
           <div className="hidden md:flex items-center gap-4">
             {!mounted ? (
-              /* Placeholder that matches server render - same dimensions as user content */
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 bg-gray-100 rounded-xl animate-pulse"></div>
                 <div className="w-24 h-10 bg-gray-100 rounded-xl animate-pulse"></div>
               </div>
             ) : (
               <>
-                {/* ✅ Shopping Cart Button - Always visible for logged in users (Buyers only recommended) */}
+                {/* Shopping Cart Button */}
                 {user && user.role === "BUYER" && (
                   <Link href="/cart" className="relative">
                     <div className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-xl transition-colors">
@@ -316,7 +302,7 @@ export default function Navbar() {
                   </Link>
                 )}
 
-                {/* Notification Bell - Only show if user is logged in */}
+                {/* Notification Bell */}
                 {user && (
                   <div className="relative" ref={notificationRef}>
                     <button 
@@ -433,7 +419,6 @@ export default function Navbar() {
                     {/* Dropdown Menu */}
                     {isDropdownOpen && (
                       <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                        {/* User Info */}
                         <div className="px-4 py-3 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-slate-100">
                           <p className="text-sm font-bold text-slate-800">
                             {user.first_name} {user.last_name}
@@ -444,7 +429,6 @@ export default function Navbar() {
                           </span>
                         </div>
                         
-                        {/* Menu Items */}
                         <div className="py-2">
                           <button
                             onClick={() => {
@@ -468,7 +452,6 @@ export default function Navbar() {
                             <span className="text-sm font-medium">My Profile</span>
                           </button>
                           
-                          {/* ✅ Add Cart link in dropdown for mobile/quick access */}
                           {user.role === "BUYER" && (
                             <button
                               onClick={() => {
@@ -519,7 +502,6 @@ export default function Navbar() {
         {isMobileMenuOpen && mounted && (
           <div className="md:hidden bg-white border-t border-slate-100 shadow-lg animate-in slide-in-from-top duration-300 max-h-[80vh] overflow-y-auto">
             <div className="px-4 py-3 space-y-1">
-              {/* Main navigation items (STATIC - always shown) */}
               {mainNavItems.map((item) => (
                 <MobileNavLink
                   key={item.href}
@@ -531,7 +513,6 @@ export default function Navbar() {
                 />
               ))}
               
-              {/* ✅ Cart link in mobile menu for buyers */}
               {user && user.role === "BUYER" && (
                 <MobileNavLink
                   href="/cart"
@@ -542,7 +523,6 @@ export default function Navbar() {
                 />
               )}
               
-              {/* Auth buttons for non-logged in users */}
               {!user ? (
                 <div className="pt-3 mt-3 border-t border-slate-100">
                   <MobileNavLink
@@ -599,8 +579,7 @@ export default function Navbar() {
         )}
       </nav>
 
-      {/* Spacer */}
-      <div className="h-16 sm:h-20" />
+      {/* SPACER REMOVED - No more extra gap */}
     </>
   );
 }
