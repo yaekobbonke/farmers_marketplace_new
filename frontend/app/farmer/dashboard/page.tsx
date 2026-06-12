@@ -19,7 +19,6 @@ import {
   DollarSign,
   ShoppingBag,
   BarChart3,
-  Calendar,
   Download,
   RefreshCw,
   Search,
@@ -525,7 +524,7 @@ export default function FarmerDashboard() {
               </div>
               <h3 className="text-xl font-bold text-slate-900 mb-2">Session Expired</h3>
               <p className="text-slate-600 mb-2">
-                Your session has expired due to {SESSION_TIMEOUT_MINUTES} minute{SESSION_TIMEOUT_MINUTES !== 1 ? 's' : ''} of inactivity.
+                Your session has expired due to {SESSION_TIMEOUT_MINUTES} minute{SESSION_TIMEOUT_MINUTES > 1 ? 's' : ''} of inactivity.
               </p>
               <p className="text-sm text-slate-500 mb-6">
                 Please log in again to continue.
@@ -577,7 +576,7 @@ export default function FarmerDashboard() {
           </div>
           
           <div className="flex flex-wrap gap-3">
-            {/* Session timer */}
+            {/* Session timer - just the counting time */}
             <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-2 rounded-xl text-sm font-mono font-bold">
               <Clock size={16} className="text-slate-400" />
               <span className={timeLeft < 60 ? 'text-red-500 animate-pulse' : 'text-slate-600'}>
@@ -883,93 +882,4 @@ export default function FarmerDashboard() {
                 <Store size={16} /> Go to Marketplace <ChevronRight size={14} />
               </Link>
             </div>
-          </div>
-        )}
-
-        {/* PRICE PREDICTION SECTION */}
-        <div id="price-prediction" className="scroll-mt-20">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-xl font-bold text-slate-900">AI Price Predictor</h3>
-              <p className="text-sm text-slate-500">Get real-time price forecasts for your commodities</p>
-            </div>
-          </div>
-          <PricePrediction />
-        </div>
-
-        {/* MARKET INTELLIGENCE */}
-        <div>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-            <div>
-              <h3 className="text-xl font-bold text-slate-900">Market Intelligence</h3>
-              <p className="text-sm text-slate-500">Real-time market trends and price data</p>
-            </div>
-            <Link href="/marketplace" className="text-sm text-green-600 font-medium hover:underline flex items-center gap-1">
-              View All <ChevronRight size={14} />
-            </Link>
-          </div>
-          <MarketTable />
-        </div>
-
-        {/* Notification Dropdown */}
-        {showNotifications && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-end p-4" onClick={() => setShowNotifications(false)}>
-            <div className="mt-16 w-96 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              <div className="p-4 border-b border-slate-100 flex justify-between items-center">
-                <h3 className="font-bold text-slate-900">Notifications</h3>
-                {notifications.length > 0 && (
-                  <button
-                    onClick={markAllNotificationsAsRead}
-                    className="text-xs text-green-600 hover:underline"
-                  >
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-              <div className="max-h-96 overflow-y-auto">
-                {notifications.length === 0 ? (
-                  <div className="p-8 text-center text-slate-400">
-                    <Bell size={32} className="mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No notifications yet</p>
-                  </div>
-                ) : (
-                  notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer ${
-                        !notification.read ? "bg-green-50/30" : ""
-                      }`}
-                      onClick={() => markNotificationAsRead(notification.id)}
-                    >
-                      <div className="flex gap-3">
-                        <div className="shrink-0">
-                          {notification.type === "success" ? (
-                            <CheckCircle size={14} className="text-green-500" />
-                          ) : notification.type === "warning" ? (
-                            <AlertCircle size={14} className="text-yellow-500" />
-                          ) : (
-                            <Bell size={14} className="text-blue-500" />
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-slate-900">{notification.title}</p>
-                          <p className="text-xs text-slate-500 mt-1">{notification.message}</p>
-                          <p className="text-[10px] text-slate-400 mt-1">
-                            {new Date(notification.createdAt).toLocaleString()}
-                          </p>
-                        </div>
-                        {!notification.read && (
-                          <div className="w-2 h-2 bg-green-500 rounded-full mt-2" />
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+         
