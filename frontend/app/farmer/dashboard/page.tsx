@@ -5,9 +5,7 @@ import api from "@/lib/api";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {  
-  TrendingUp, 
   Plus, 
-  ArrowUpRight, 
   Package, 
   AlertCircle,
   ChevronRight,
@@ -20,35 +18,34 @@ import {
   Sparkles,
   DollarSign,
   ShoppingBag,
-  Award,
   BarChart3,
   Calendar,
   Download,
   RefreshCw,
-  Filter,
   Search,
   X,
-  Star,
-  Truck,
   Leaf,
-  Shield,
-  Zap,
   Target,
-  Globe,
-  Users,
-  Heart,
-  Share2,
   MoreVertical,
-  Edit,
   Trash2,
   Copy,
-  TrendingDown,
-  ListOrdered
+  ListOrdered,
+  LogOut
 } from "lucide-react";
 import { AxiosError } from "axios";
-import MarketTable from "@/components/MarketTable";
-import PricePrediction from "@/components/PricePrediction";
+import dynamic from 'next/dynamic';
 import Link from "next/link";
+
+// Dynamic imports with no SSR for components that might cause issues
+const MarketTable = dynamic(() => import("@/components/MarketTable"), {
+  ssr: false,
+  loading: () => <div className="h-64 bg-slate-50 rounded-xl animate-pulse" />
+});
+
+const PricePrediction = dynamic(() => import("@/components/PricePrediction"), {
+  ssr: false,
+  loading: () => <div className="h-96 bg-slate-50 rounded-xl animate-pulse" />
+});
 
 // Session configuration - 5 minutes timeout
 const SESSION_TIMEOUT_MINUTES = 5;
@@ -88,6 +85,26 @@ interface DashboardStats {
   conversionRate: number;
 }
 
+// Stat Card Component moved outside
+const StatCard = React.memo(({ title, value, icon, color, subtitle }: any) => (
+  <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all group">
+    <div className="flex items-center justify-between mb-3">
+      <div className={`p-2.5 rounded-xl ${color} group-hover:scale-110 transition-transform`}>
+        {icon}
+      </div>
+    </div>
+    <div>
+      <p className="text-2xl font-bold text-slate-900">{value}</p>
+      <p className="text-xs font-medium text-slate-500 mt-0.5">{title}</p>
+      {subtitle && (
+        <p className="text-[10px] text-slate-400 mt-1">{subtitle}</p>
+      )}
+    </div>
+  </div>
+));
+
+StatCard.displayName = 'StatCard';
+
 export default function FarmerDashboard() {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
@@ -96,7 +113,6 @@ export default function FarmerDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "verified" | "pending">("all");
@@ -106,6 +122,7 @@ export default function FarmerDashboard() {
   const [insights, setInsights] = useState<any>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
   const insightsFetched = useRef(false);
+  const isMounted = useRef(true);
   
   // Session management states
   const [showSessionExpired, setShowSessionExpired] = useState(false);
@@ -127,60 +144,52 @@ export default function FarmerDashboard() {
   });
 
   // Helper function to get user's full name
-  const getUserFullName = () => {
+  const getUserFullName = React.useCallback(() => {
     if (!user) return "Farmer";
-    
     if (user.first_name && user.last_name) {
       return `${user.first_name} ${user.last_name}`;
     }
-    if (user.first_name) {
-      return user.first_name;
-    }
-    if (user.name) {
-      return user.name;
-    }
-    if (user.fullName) {
-      return user.fullName;
-    }
+    if (user.first_name) return user.first_name;
+    if (user.name) return user.name;
+    if (user.fullName) return user.fullName;
     if (user.user?.first_name) {
       return `${user.user.first_name} ${user.user.last_name || ''}`;
     }
-    
     return "Farmer";
-  };
+  }, [user]);
 
-  // Helper function to get first name for welcome message
-  const getFirstName = () => {
-    const fullName = getUserFullName();
-    return fullName.split(' ')[0];
-  };
+  const getFirstName = React.useCallback(() => {
+    return getUserFullName().split(' ')[0];
+  }, [getUserFullName]);
 
   // Update last activity with throttling
   const updateLastActivity = useCallback(() => {
     const now = Date.now();
     lastActivityRef.current = now;
     
-    // Only updates the state/UI at most once every 2 seconds
     if (now - lastThrottledUpdateRef.current > 2000) {
-      setTimeLeft(SESSION_TIMEOUT_MINUTES * 60);
+      if (isMounted.current) {
+        setTimeLeft(SESSION_TIMEOUT_MINUTES * 60);
+      }
       lastThrottledUpdateRef.current = now;
     }
   }, []);
 
-  // Logout function - redirects to login
+  // Logout function
   const logout = useCallback(() => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    localStorage.removeItem("sessionStart");
     if (sessionTimerRef.current) {
       clearInterval(sessionTimerRef.current);
     }
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("sessionStart");
     router.push("/login");
   }, [router]);
 
-  // Show session expired modal and then redirect
   const showExpiredAndRedirect = useCallback(() => {
-    setShowSessionExpired(true);
+    if (isMounted.current) {
+      setShowSessionExpired(true);
+    }
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     localStorage.removeItem("sessionStart");
@@ -192,12 +201,15 @@ export default function FarmerDashboard() {
     }, 3000);
   }, [router]);
 
-  // Check session status
   const checkSession = useCallback(() => {
     const now = Date.now();
     const timeSinceLastActivity = now - lastActivityRef.current;
     const remainingSeconds = Math.max(0, SESSION_TIMEOUT_MINUTES * 60 - Math.floor(timeSinceLastActivity / 1000));
-    setTimeLeft(remainingSeconds);
+    
+    if (isMounted.current) {
+      setTimeLeft(remainingSeconds);
+    }
+    
     if (timeSinceLastActivity >= SESSION_TIMEOUT_MINUTES * 60 * 1000) {
       showExpiredAndRedirect();
     }
@@ -205,14 +217,21 @@ export default function FarmerDashboard() {
 
   // Track user activity
   useEffect(() => {
-    const activities = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'mousemove', 'keypress'];
+    if (typeof window === 'undefined') return;
+    
+    const activities = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click', 'mousemove'];
     const handleUserActivity = () => updateLastActivity();
+    
     activities.forEach(activity => window.addEventListener(activity, handleUserActivity));
-    return () => activities.forEach(activity => window.removeEventListener(activity, handleUserActivity));
+    return () => {
+      activities.forEach(activity => window.removeEventListener(activity, handleUserActivity));
+    };
   }, [updateLastActivity]);
 
   // Session timer
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     updateLastActivity();
     sessionTimerRef.current = setInterval(checkSession, CHECK_INTERVAL_MS);
     return () => {
@@ -222,7 +241,6 @@ export default function FarmerDashboard() {
     };
   }, [checkSession, updateLastActivity]);
 
-  // Apply filters function
   const applyFilters = useCallback((data: Product[], search: string, filter: string) => {
     let filtered = [...data];
     if (search) {
@@ -238,47 +256,56 @@ export default function FarmerDashboard() {
     setFilteredProducts(filtered);
   }, []);
 
-  // Fetch insights
   const fetchInsights = useCallback(async () => {
-    if (insightsFetched.current) return;
-    if (products.length === 0) return;
+    if (insightsFetched.current || products.length === 0) return;
+    
     try {
       setLoadingInsights(true);
       insightsFetched.current = true;
       const response = await api.get("/assistant/insights");
-      setInsights(response.data.data);
+      if (isMounted.current) {
+        setInsights(response.data.data);
+      }
     } catch (error) {
       console.error("Error fetching insights:", error);
-      setInsights({
-        hasData: products.length > 0,
-        message: products.length > 0 
-          ? `Your ${products[0]?.name || "products"} are getting attention.`
-          : "Start adding products to get AI-powered insights.",
-        recommendation: "Optimize your listings for better visibility.",
-        actionLink: products.length > 0 ? `/farmer/analytics` : "/farmer/products/add",
-        actionText: "View Analytics"
-      });
+      if (isMounted.current) {
+        setInsights({
+          hasData: products.length > 0,
+          message: products.length > 0 
+            ? `Your ${products[0]?.name || "products"} are getting attention.`
+            : "Start adding products to get AI-powered insights.",
+          recommendation: "Optimize your listings for better visibility.",
+          actionLink: products.length > 0 ? "/farmer/analytics" : "/farmer/products/add",
+          actionText: "View Analytics"
+        });
+      }
     } finally {
-      setLoadingInsights(false);
+      if (isMounted.current) {
+        setLoadingInsights(false);
+      }
     }
   }, [products.length]);
 
-  // Fetch notifications
   const fetchNotifications = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+    
     const token = localStorage.getItem("token");
     if (!token) return;
+    
     try {
       const response = await api.get("/notifications");
       const data = response.data.data || [];
-      setNotifications(data);
-      setUnreadCount(data.filter((n: Notification) => !n.read).length);
+      if (isMounted.current) {
+        setNotifications(data);
+      }
     } catch (error) {
       console.error("Error fetching notifications:", error);
     }
   }, []);
 
-  // Fetch dashboard data
   const fetchDashboardData = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+    
     try {
       setLoading(true);
       const response = await api.get("/products/farmer/products");
@@ -291,20 +318,22 @@ export default function FarmerDashboard() {
       const totalOrdersCalculated = data.reduce((acc, p) => acc + (p.views || 0), 0);
       const conversionRateCalculated = data.length > 0 ? ((approvedCount / data.length) * 100) : 0;
 
-      setProducts(data);
-      applyFilters(data, searchQuery, statusFilter);
-      
-      setStats({
-        totalProducts: data.length,
-        pendingApproval: pendingApproval,
-        approvedCount: approvedCount,
-        inventoryValue: totalValue,
-        lowStockCount: lowStock,
-        totalViews: data.reduce((acc, p) => acc + (p.views || 0), 0),
-        totalOrders: totalOrdersCalculated,
-        averageRating: 4.8,
-        conversionRate: conversionRateCalculated
-      });
+      if (isMounted.current) {
+        setProducts(data);
+        applyFilters(data, searchQuery, statusFilter);
+        
+        setStats({
+          totalProducts: data.length,
+          pendingApproval: pendingApproval,
+          approvedCount: approvedCount,
+          inventoryValue: totalValue,
+          lowStockCount: lowStock,
+          totalViews: data.reduce((acc, p) => acc + (p.views || 0), 0),
+          totalOrders: totalOrdersCalculated,
+          averageRating: 4.8,
+          conversionRate: conversionRateCalculated
+        });
+      }
       
       await fetchNotifications();
       insightsFetched.current = false;
@@ -316,7 +345,9 @@ export default function FarmerDashboard() {
         showExpiredAndRedirect();
       }
     } finally {
-      setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
   }, [fetchNotifications, applyFilters, searchQuery, statusFilter, updateLastActivity, showExpiredAndRedirect]);
 
@@ -324,24 +355,33 @@ export default function FarmerDashboard() {
     setRefreshing(true);
     insightsFetched.current = false;
     await fetchDashboardData();
-    setTimeout(() => setRefreshing(false), 1000);
+    setTimeout(() => {
+      if (isMounted.current) {
+        setRefreshing(false);
+      }
+    }, 1000);
     updateLastActivity();
   };
 
   const handleDeleteProduct = async (productId: number) => {
     if (!confirm("Are you sure you want to delete this product?")) return;
+    
     setDeletingProduct(productId);
     try {
       await api.delete(`/products/${productId}`);
-      setProducts(prev => prev.filter(p => p.id !== productId));
+      if (isMounted.current) {
+        setProducts(prev => prev.filter(p => p.id !== productId));
+      }
       alert("Product deleted successfully");
       updateLastActivity();
     } catch (error) {
       console.error("Error deleting product:", error);
       alert("Failed to delete product");
     } finally {
-      setDeletingProduct(null);
-      setShowProductMenu(null);
+      if (isMounted.current) {
+        setDeletingProduct(null);
+        setShowProductMenu(null);
+      }
     }
   };
 
@@ -368,12 +408,13 @@ export default function FarmerDashboard() {
   const markNotificationAsRead = async (notificationId: number) => {
     try {
       await api.put(`/notifications/${notificationId}/read`);
-      setNotifications(prev =>
-        prev.map(n =>
-          n.id === notificationId ? { ...n, read: true } : n
-        )
-      );
-      setUnreadCount(prev => Math.max(0, prev - 1));
+      if (isMounted.current) {
+        setNotifications(prev =>
+          prev.map(n =>
+            n.id === notificationId ? { ...n, read: true } : n
+          )
+        );
+      }
       updateLastActivity();
     } catch (error) {
       console.error("Error marking notification as read:", error);
@@ -383,28 +424,39 @@ export default function FarmerDashboard() {
   const markAllNotificationsAsRead = async () => {
     try {
       await api.put("/notifications/mark-all-read");
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-      setUnreadCount(0);
+      if (isMounted.current) {
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      }
       updateLastActivity();
     } catch (error) {
       console.error("Error marking all as read:", error);
     }
   };
 
-  // Effect for applying filters when search/filter changes
+  // Apply filters effect
   useEffect(() => {
     applyFilters(products, searchQuery, statusFilter);
   }, [searchQuery, statusFilter, products, applyFilters]);
 
-  // Effect for fetching insights after products load
+  // Fetch insights effect
   useEffect(() => {
     if (products.length > 0 && !insightsFetched.current && !loading) {
       fetchInsights();
     }
   }, [products.length, loading, fetchInsights]);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
   // Get user from localStorage on mount
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     const token = localStorage.getItem("token");
     const userStr = localStorage.getItem("user");
     
@@ -426,7 +478,11 @@ export default function FarmerDashboard() {
     fetchDashboardData();
     
     const interval = setInterval(fetchNotifications, 30000);
-    const welcomeTimer = setTimeout(() => setShowWelcome(false), 5000);
+    const welcomeTimer = setTimeout(() => {
+      if (isMounted.current) {
+        setShowWelcome(false);
+      }
+    }, 5000);
     
     return () => {
       clearInterval(interval);
@@ -434,7 +490,6 @@ export default function FarmerDashboard() {
     };
   }, [fetchDashboardData, fetchNotifications, router]);
 
-  // Format time as MM:SS
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -453,12 +508,17 @@ export default function FarmerDashboard() {
 
   const approvedProducts = products.filter(p => p.is_verified);
 
+  // Don't render on server
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-50/30">
       {/* Session Expired Modal */}
       {showSessionExpired && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
             <div className="text-center">
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <AlertCircle size={32} className="text-red-600" />
@@ -470,19 +530,12 @@ export default function FarmerDashboard() {
               <p className="text-sm text-slate-500 mb-6">
                 Please log in again to continue.
               </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    router.push("/login");
-                  }}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors"
-                >
-                  Go to Login
-                </button>
-              </div>
-              <p className="text-xs text-slate-400 mt-4">
-                Redirecting automatically in a few seconds...
-              </p>
+              <button
+                onClick={() => router.push("/login")}
+                className="w-full px-4 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors"
+              >
+                Go to Login
+              </button>
             </div>
           </div>
         </div>
@@ -509,7 +562,6 @@ export default function FarmerDashboard() {
       )}
 
       <div className="max-w-7xl mx-auto space-y-8 p-4 md:p-8">
-        
         {/* TOP HEADER */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
@@ -525,10 +577,10 @@ export default function FarmerDashboard() {
           </div>
           
           <div className="flex flex-wrap gap-3">
-            {/* Session timer - just the counting time, no text */}
+            {/* Session timer */}
             <div className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-2 rounded-xl text-sm font-mono font-bold">
               <Clock size={16} className="text-slate-400" />
-              <span className={`${timeLeft < 60 ? 'text-red-500 animate-pulse' : 'text-slate-600'}`}>
+              <span className={timeLeft < 60 ? 'text-red-500 animate-pulse' : 'text-slate-600'}>
                 {formatTime(timeLeft)}
               </span>
             </div>
@@ -542,7 +594,6 @@ export default function FarmerDashboard() {
               {refreshing ? "Refreshing..." : "Refresh"}
             </button>
 
-            {/* Manage Orders Button */}
             <Link
               href="/farmer/orders"
               className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold hover:from-purple-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg"
@@ -564,8 +615,6 @@ export default function FarmerDashboard() {
             >
               <Plus size={20} /> List Product
             </button>
-
-            {/* NO LOGOUT BUTTON HERE - It's in the dropdown menu below */}
           </div>
         </div>
 
@@ -623,9 +672,9 @@ export default function FarmerDashboard() {
               <p className="text-white/80 text-sm mb-4">
                 {loadingInsights 
                   ? "Analyzing your farm data..." 
-                  : (insights?.message || products.length > 0 
-                    ? `Your ${products[0]?.name || "products"} are getting attention. Consider optimizing your listings for better visibility.`
-                    : "Start adding products to get AI-powered insights.")}
+                  : (insights?.message || (products.length > 0 
+                    ? `Your ${products[0]?.name || "products"} are getting attention.`
+                    : "Start adding products to get AI-powered insights."))}
               </p>
               {insights?.recommendation && (
                 <p className="text-white/70 text-xs mb-4 italic">
@@ -728,7 +777,7 @@ export default function FarmerDashboard() {
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700">
-                              <Clock size={10} /> Pending Approval
+                              <Clock size={10} /> Pending
                             </span>
                           )}
                         </div>
@@ -740,9 +789,6 @@ export default function FarmerDashboard() {
                             Category: {product.category.name}
                           </p>
                         )}
-                        <p className="text-xs text-slate-400 mt-1">
-                          Listed: {new Date(product.createdAt).toLocaleDateString()}
-                        </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -781,7 +827,6 @@ export default function FarmerDashboard() {
                               )}
                               Delete
                             </button>
-                            {/* Logout option in dropdown menu */}
                             <button
                               onClick={logout}
                               className="w-full px-4 py-2 text-left text-sm flex items-center gap-2 text-red-600 border-t border-slate-100 hover:bg-red-50 transition-colors"
@@ -848,9 +893,6 @@ export default function FarmerDashboard() {
               <h3 className="text-xl font-bold text-slate-900">AI Price Predictor</h3>
               <p className="text-sm text-slate-500">Get real-time price forecasts for your commodities</p>
             </div>
-            <button className="text-sm text-green-600 font-medium hover:underline">
-              View History →
-            </button>
           </div>
           <PricePrediction />
         </div>
@@ -862,22 +904,14 @@ export default function FarmerDashboard() {
               <h3 className="text-xl font-bold text-slate-900">Market Intelligence</h3>
               <p className="text-sm text-slate-500">Real-time market trends and price data</p>
             </div>
-            <div className="flex gap-3">
-              <button className="text-sm text-slate-500 hover:text-green-600 font-medium">
-                Last 7 Days
-              </button>
-              <button className="text-sm text-slate-500 hover:text-green-600 font-medium">
-                Last 30 Days
-              </button>
-              <Link href="/marketplace" className="text-sm text-green-600 font-medium hover:underline flex items-center gap-1">
-                View All <ChevronRight size={14} />
-              </Link>
-            </div>
+            <Link href="/marketplace" className="text-sm text-green-600 font-medium hover:underline flex items-center gap-1">
+              View All <ChevronRight size={14} />
+            </Link>
           </div>
           <MarketTable />
         </div>
 
-        {/* Notification Bell Dropdown */}
+        {/* Notification Dropdown */}
         {showNotifications && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-end p-4" onClick={() => setShowNotifications(false)}>
             <div className="mt-16 w-96 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden" onClick={(e) => e.stopPropagation()}>
@@ -934,26 +968,6 @@ export default function FarmerDashboard() {
               </div>
             </div>
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Enhanced Stat Card Component
-function StatCard({ title, value, icon, color, subtitle }: any) {
-  return (
-    <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all group">
-      <div className="flex items-center justify-between mb-3">
-        <div className={`p-2.5 rounded-xl ${color} group-hover:scale-110 transition-transform`}>
-          {icon}
-        </div>
-      </div>
-      <div>
-        <p className="text-2xl font-bold text-slate-900">{value}</p>
-        <p className="text-xs font-medium text-slate-500 mt-0.5">{title}</p>
-        {subtitle && (
-          <p className="text-[10px] text-slate-400 mt-1">{subtitle}</p>
         )}
       </div>
     </div>
