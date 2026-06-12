@@ -863,4 +863,93 @@ export default function FarmerDashboard() {
               <button className="text-sm text-slate-500 hover:text-green-600 font-medium">
                 Last 30 Days
               </button>
-              <Link href="/
+              <Link href="/marketplace" className="text-sm text-green-600 font-medium hover:underline flex items-center gap-1">
+                View All <ChevronRight size={14} />
+              </Link>
+            </div>
+          </div>
+          <MarketTable />
+        </div>
+
+        {/* Notification Bell Dropdown */}
+        {showNotifications && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-end p-4" onClick={() => setShowNotifications(false)}>
+            <div className="mt-16 w-96 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                <h3 className="font-bold text-slate-900">Notifications</h3>
+                {notifications.length > 0 && (
+                  <button
+                    onClick={markAllNotificationsAsRead}
+                    className="text-xs text-green-600 hover:underline"
+                  >
+                    Mark all as read
+                  </button>
+                )}
+              </div>
+              <div className="max-h-96 overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400">
+                    <Bell size={32} className="mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">No notifications yet</p>
+                  </div>
+                ) : (
+                  notifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer ${
+                        !notification.read ? "bg-green-50/30" : ""
+                      }`}
+                      onClick={() => markNotificationAsRead(notification.id)}
+                    >
+                      <div className="flex gap-3">
+                        <div className="shrink-0">
+                          {notification.type === "success" ? (
+                            <CheckCircle size={14} className="text-green-500" />
+                          ) : notification.type === "warning" ? (
+                            <AlertCircle size={14} className="text-yellow-500" />
+                          ) : (
+                            <Bell size={14} className="text-blue-500" />
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-slate-900">{notification.title}</p>
+                          <p className="text-xs text-slate-500 mt-1">{notification.message}</p>
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            {new Date(notification.createdAt).toLocaleString()}
+                          </p>
+                        </div>
+                        {!notification.read && (
+                          <div className="w-2 h-2 bg-green-500 rounded-full mt-2" />
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Enhanced Stat Card Component
+function StatCard({ title, value, icon, color, subtitle }: any) {
+  return (
+    <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all group">
+      <div className="flex items-center justify-between mb-3">
+        <div className={`p-2.5 rounded-xl ${color} group-hover:scale-110 transition-transform`}>
+          {icon}
+        </div>
+      </div>
+      <div>
+        <p className="text-2xl font-bold text-slate-900">{value}</p>
+        <p className="text-xs font-medium text-slate-500 mt-0.5">{title}</p>
+        {subtitle && (
+          <p className="text-[10px] text-slate-400 mt-1">{subtitle}</p>
+        )}
+      </div>
+    </div>
+  );
+}
