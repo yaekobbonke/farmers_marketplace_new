@@ -43,7 +43,7 @@ export default function RegisterPage() {
   });
 
   // ✅ Admin secret key (change this to something secure)
-  const ADMIN_SECRET_KEY = "admin123"; // Temporary - change this!
+  const ADMIN_SECRET_KEY = "Jackmanbonke##@5003"; // Temporary - change this!
 
   // ✅ Check if admin secret is correct
   const isAdminSecretValid = adminSecret === ADMIN_SECRET_KEY;
